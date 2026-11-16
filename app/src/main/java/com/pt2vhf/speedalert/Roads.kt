@@ -7,104 +7,137 @@ import android.util.Log
 import java.io.File
 import kotlin.math.*
 
-/** Portable offline SQLite speed limits, using a regular indexed tile table. */
-class Roads(context: Context) {
-  data class Result(val limit: Double?, val source: String)
-  private val app = context.applicationContext
-  private val file = File(context.filesDir, "df_roads_v2.sqlite")
-  private var db: SQLiteDatabase? = null
-  private var initError: String? = null
+/** Offline map matching for road speeds, names and road-mounted speed cameras. */
+class Roads(context:Context) {
+  data class Result(
+    val limit:Double?, val source:String,
+    val roadName:String="Via não identificada",
+    val radarDistance:Double?=null, val radarLimit:Double?=null
+  )
+  private val app=context.applicationContext
+  private val file=File(app.filesDir,"df_roads_v3.sqlite")
+  private val db:SQLiteDatabase?
+  private val initError:String?
   init {
-    try { db = openChecked() }
-    catch (e: Exception) {
-      initError = e.javaClass.simpleName
-      Log.e("PT2VHF.Roads", "Offline initialization failed", e)
+    var opened:SQLiteDatabase?=null
+    var failed:String?=null
+    try { opened=openChecked() }
+    catch(e:Exception) {
+      failed=e.javaClass.simpleName
+      Log.e("PT2VHF.Roads","Offline v3 initialization failed",e)
     }
+    db=opened
+    initError=failed
   }
-  private fun install() {
-    val temp = File(file.parentFile, file.name + ".tmp")
+  private fun replace() {
+    val temp=File(file.parentFile,file.name+".tmp")
     try {
-      app.assets.open(file.name).use { src ->
-        temp.outputStream().use { out ->
-          src.copyTo(out)
-          out.fd.sync()
-        }
+      app.assets.open(file.name).use { inp ->
+        temp.outputStream().use { out -> inp.copyTo(out);out.fd.sync() }
       }
-      if (file.exists() && !file.delete()) throw java.io.IOException("old db not removable")
-      if (!temp.renameTo(file)) throw java.io.IOException("db rename failed")
-    } finally {
-      if (temp.exists()) temp.delete()
-    }
+      if(file.exists() && !file.delete())throw java.io.IOException("db replacement failed")
+      if(!temp.renameTo(file))throw java.io.IOException("db installation failed")
+    } finally { if(temp.exists())temp.delete() }
   }
-  private fun openChecked(): SQLiteDatabase {
-    if (!file.exists()) install()
-    fun open() = SQLiteDatabase.openDatabase(file.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
+  private fun openChecked():SQLiteDatabase {
+    if(!file.exists())replace()
+    fun open()=SQLiteDatabase.openDatabase(file.absolutePath,null,SQLiteDatabase.OPEN_READONLY)
     try {
-      val candidate = open()
-      val valid = candidate.version == 2 &&
-        candidate.rawQuery("SELECT COUNT(*) FROM road_tiles", null).use {
-          it.moveToFirst() && it.getInt(0) >= 1000
-        }
-      if (valid) return candidate
-      candidate.close()
-    } catch (e: Exception) {
-      Log.w("PT2VHF.Roads", "Cached database invalid", e)
-    }
-    install()
-    val fresh = open()
-    if (fresh.version != 2) {
-      fresh.close()
-      throw java.io.IOException("Unexpected database schema version")
-    }
-    return fresh
+      val d=open()
+      val valid=d.version==3 && d.rawQuery("SELECT COUNT(*) FROM road_tiles",null).use {
+        it.moveToFirst() && it.getLong(0)>=50000L
+      }
+      if(valid)return d
+      d.close()
+    } catch(e:Exception) {Log.w("PT2VHF.Roads","Bad local db, recovering",e)}
+    replace()
+    val d=open()
+    if(d.version!=3){d.close();throw java.io.IOException("Invalid v3 database")}
+    return d
   }
-
-  fun resolve(loc: Location): Result {
-    val d = db ?: return Result(null, "BASE OFFLINE INDISPONÍVEL (" + (initError ?: "ERRO") + ")")
-    if (!loc.hasBearing()) return Result(null, "AGUARDANDO DIREÇÃO")
-    val lat = loc.latitude; val lon = loc.longitude
-    val tileLat = floor(lat * 1000.0).toInt()
-    val tileLon = floor(lon * 1000.0).toInt()
-    val found = mutableListOf<Pair<Double, Double>>()
+  fun resolve(loc:Location, radarRangeMeters:Double=300.0):Result {
+    val d=db?:return Result(null,"BASE OFFLINE INDISPONÍVEL: "+(initError ?: "erro"))
+    val lat=loc.latitude;val lon=loc.longitude
+    if(!loc.hasBearing())return Result(null,"AGUARDANDO DIREÇÃO GPS")
+    val tlat=floor(lat*1000.0).toInt()
+    val tlon=floor(lon*1000.0).toInt()
+    data class Match(val score:Double,val speed:Double?,val name:String,val wayid:Long)
+    val candidates=ArrayList<Match>()
     try {
       d.rawQuery(
-        "SELECT r.lat1,r.lon1,r.lat2,r.lon2,r.fwd,r.bwd " +
-        "FROM road_tiles t JOIN roads r ON r.id=t.road_id " +
-        "WHERE t.tile_lat BETWEEN ? AND ? AND t.tile_lon BETWEEN ? AND ? " +
-        "GROUP BY r.id LIMIT 600",
-        arrayOf((tileLat-1).toString(),(tileLat+1).toString(),
-          (tileLon-1).toString(),(tileLon+1).toString())
+        "SELECT r.lat1,r.lon1,r.lat2,r.lon2,r.fwd,r.bwd,r.name,r.ref,r.wayid "+
+        "FROM road_tiles t JOIN roads r ON t.road_id=r.id "+
+        "WHERE t.tile_lat BETWEEN ? AND ? AND t.tile_lon BETWEEN ? AND ? "+
+        "GROUP BY r.id LIMIT 1200",
+        arrayOf((tlat-1).toString(),(tlat+1).toString(),
+          (tlon-1).toString(),(tlon+1).toString())
       ).use { c ->
-        while (c.moveToNext()) {
-          val x1 = (c.getDouble(1)-lon)*111320.0*cos(Math.toRadians(lat))
-          val y1 = (c.getDouble(0)-lat)*111320.0
-          val x2 = (c.getDouble(3)-lon)*111320.0*cos(Math.toRadians(lat))
-          val y2 = (c.getDouble(2)-lat)*111320.0
-          val dx = x2-x1; val dy = y2-y1
-          val length2 = dx*dx + dy*dy
-          if (length2 < 1.0) continue
-          val fraction = (-(x1*dx+y1*dy)/length2).coerceIn(0.0,1.0)
-          val distance = hypot(x1+fraction*dx, y1+fraction*dy)
-          if (distance > 27.0) continue
-          val direction = (Math.toDegrees(atan2(dx,dy))+360.0)%360.0
-          val forward = angle(loc.bearing.toDouble(),direction)
-          val backward = angle(loc.bearing.toDouble(),(direction+180.0)%360.0)
-          val heading = min(forward,backward)
-          if (heading > 45.0) continue
-          val selected = if (forward <= backward) 4 else 5
-          if (c.isNull(selected)) continue
-          found.add((distance+heading*0.3) to c.getDouble(selected))
+        val factor=111320.0*cos(Math.toRadians(lat))
+        while(c.moveToNext()) {
+          val x1=(c.getDouble(1)-lon)*factor
+          val y1=(c.getDouble(0)-lat)*111320.0
+          val x2=(c.getDouble(3)-lon)*factor
+          val y2=(c.getDouble(2)-lat)*111320.0
+          val dx=x2-x1;val dy=y2-y1
+          val n=dx*dx+dy*dy
+          if(n<1.0)continue
+          val t=(-(x1*dx+y1*dy)/n).coerceIn(0.0,1.0)
+          val distance=hypot(x1+t*dx,y1+t*dy)
+          if(distance>27.0)continue
+          val segmentBearing=(Math.toDegrees(atan2(dx,dy))+360.0)%360.0
+          val f=angle(loc.bearing.toDouble(),segmentBearing)
+          val b=angle(loc.bearing.toDouble(),(segmentBearing+180)%360)
+          val heading=min(f,b)
+          if(heading>45.0)continue
+          val column=if(f<=b)4 else 5
+          val max=if(c.isNull(column))null else c.getDouble(column)
+          val named=c.getString(6).orEmpty().ifBlank{c.getString(7).orEmpty()}
+          candidates.add(Match(distance+heading*0.3,max,named,c.getLong(8)))
         }
       }
-    } catch (e: Exception) {
-      Log.e("PT2VHF.Roads", "Offline query failed", e)
-      return Result(null, "ERRO CONSULTA OFFLINE (" + e.javaClass.simpleName + ")")
+    } catch(e:Exception) {
+      Log.e("PT2VHF.Roads","Road query failed",e)
+      return Result(null,"ERRO CONSULTA OFFLINE: "+e.javaClass.simpleName)
     }
-    found.sortBy { it.first }
-    val winner = found.firstOrNull() ?: return Result(null, "LIMITE NÃO CADASTRADO")
-    if (found.drop(1).any { it.first-winner.first < 7 &&
-      abs(it.second-winner.second) > 0.1 }) return Result(null, "VIA AMBÍGUA")
-    return Result(winner.second, "OSM OFFLINE V2")
+    candidates.sortBy {it.score}
+    val best=candidates.firstOrNull()?:return Result(null,"VIA OU LIMITE NÃO CADASTRADO")
+    val competing=candidates.drop(1).any {
+      it.score-best.score<7.0 && it.wayid!=best.wayid &&
+      (it.speed!=best.speed || (it.name.isNotBlank() && best.name.isNotBlank() && it.name!=best.name))
+    }
+    if(competing)return Result(null,"VIA AMBÍGUA")
+    val roadName=best.name.ifBlank{"Via não identificada"}
+    var radarDistance:Double?=null
+    var radarLimit:Double?=null
+    val radius=radarRangeMeters.coerceIn(100.0,1000.0)
+    val offset=(radius+40.0)/111320.0
+    val latTiles=(offset*1000).toInt()+2
+    val lonTiles=(offset*1000/max(0.4,cos(Math.toRadians(lat)))).toInt()+2
+    try {
+      d.rawQuery(
+        "SELECT lat,lon,speed FROM cameras WHERE wayid=? AND "+
+        "tile_lat BETWEEN ? AND ? AND tile_lon BETWEEN ? AND ?",
+        arrayOf(best.wayid.toString(),(tlat-latTiles).toString(),(tlat+latTiles).toString(),
+          (tlon-lonTiles).toString(),(tlon+lonTiles).toString())
+      ).use { c ->
+        val factor=111320.0*cos(Math.toRadians(lat))
+        while(c.moveToNext()) {
+          val east=(c.getDouble(1)-lon)*factor
+          val north=(c.getDouble(0)-lat)*111320.0
+          val dist=hypot(east,north)
+          if(dist>radius || dist<8.0)continue
+          val heading=(Math.toDegrees(atan2(east,north))+360)%360
+          if(angle(loc.bearing.toDouble(),heading)>45.0)continue
+          val posted=if(c.isNull(2))best.speed else c.getDouble(2)
+          if(posted==null)continue
+          if(dist<(radarDistance ?: Double.POSITIVE_INFINITY)) {
+            radarDistance=dist
+            radarLimit=posted
+          }
+        }
+      }
+    } catch(e:Exception) {Log.w("PT2VHF.Roads","Radar lookup failed",e)}
+    return Result(best.speed,"OSM OFFLINE v3",roadName,radarDistance,radarLimit)
   }
-  private fun angle(a: Double,b: Double) = abs((a-b+540.0)%360.0-180.0)
+  private fun angle(a:Double,b:Double)=abs((a-b+540.0)%360.0-180.0)
 }
