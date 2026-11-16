@@ -6,7 +6,10 @@
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
   <uses-feature android:name="android.hardware.location.gps" android:required="true"/>
-  <application android:label="PT2VHF Speed Alert" android:theme="@android:style/Theme.Material.NoActionBar" android:icon="@android:drawable/ic_lock_idle_alarm" android:allowBackup="false">
+  <application android:label="PT2VHF Speed Alert" android:theme="@android:style/Theme.Material.NoActionBar"
+      android:icon="@drawable/ic_speed_alert" android:roundIcon="@drawable/ic_speed_alert"
+      android:allowBackup="false">
+    <activity android:name=".SettingsActivity" android:exported="false"/>
     <activity android:name=".MainActivity" android:exported="true">
       <intent-filter>
         <action android:name="android.intent.action.MAIN"/>
