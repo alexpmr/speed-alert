@@ -22,16 +22,16 @@ jobs:
             RUN_ID="$(gh run list --repo "${{ github.repository }}" --workflow speed-alert-apk.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
           fi
           mkdir -p apk
-          gh run download "$RUN_ID" --repo "${{ github.repository }}" --name PT2VHF-Speed-Alert-1.0.1-beta1-APK --dir apk
+          gh run download "$RUN_ID" --repo "${{ github.repository }}" --name PT2VHF-Speed-Alert-1.0.2-beta1-APK --dir apk
           test -s apk/app-debug.apk
-          mv apk/app-debug.apk apk/PT2VHF-Speed-Alert-v1.0.1-beta.1.apk
-          sha256sum apk/PT2VHF-Speed-Alert-v1.0.1-beta.1.apk | tee apk/SHA256SUMS.txt
+          mv apk/app-debug.apk apk/PT2VHF-Speed-Alert-v1.0.2-beta.1.apk
+          sha256sum apk/PT2VHF-Speed-Alert-v1.0.2-beta.1.apk | tee apk/SHA256SUMS.txt
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v1.0.1-beta.1 --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release upload v1.0.1-beta.1 apk/PT2VHF-Speed-Alert-v1.0.1-beta.1.apk apk/SHA256SUMS.txt --repo "${{ github.repository }}" --clobber
+          if gh release view v1.0.2-beta.1 --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload v1.0.2-beta.1 apk/PT2VHF-Speed-Alert-v1.0.2-beta.1.apk apk/SHA256SUMS.txt --repo "${{ github.repository }}" --clobber
           else
-            gh release create v1.0.1-beta.1 apk/PT2VHF-Speed-Alert-v1.0.1-beta.1.apk apk/SHA256SUMS.txt --repo "${{ github.repository }}" --title "PT2VHF Speed Alert 1.0.1 beta 1" --notes "Nova tela de configuracoes, icone proprio e monitoramento automatico ao abrir. Base OSM offline do DF. APK de testes, assinado com chave de debug variavel (pode requerer desinstalar beta anterior). Precisa de homologacao em campo." --prerelease
+            gh release create v1.0.2-beta.1 apk/PT2VHF-Speed-Alert-v1.0.2-beta.1.apk apk/SHA256SUMS.txt --repo "${{ github.repository }}" --title "PT2VHF Speed Alert 1.0.2 beta 1" --notes "Corrigida base offline SQLite v2, splash de abertura e aviso de responsabilidade com Continuar/Fechar. Novo backlog em issue 1 para nome da via e alertas de radar. APK de testes, assinado com chave de debug variavel (pode requerer desinstalar beta anterior). Precisa de homologacao em campo." --prerelease
           fi
