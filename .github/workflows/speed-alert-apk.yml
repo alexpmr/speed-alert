@@ -20,31 +20,38 @@ jobs:
         uses: android-actions/setup-android@v4
       - name: Install Android platform
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
-      - name: Reuse validated offline DF road database from v1.0.0
+      - name: Convert validated OSM database to portable SQLite v2
         run: |
           curl --fail --location --retry 3 -o /tmp/previous.apk \
             https://github.com/alexpmr/speed-alert/releases/download/v1.0.0-beta.1/PT2VHF-Speed-Alert-v1.0.0-beta.1.apk
           mkdir -p app/src/main/assets
-          unzip -p /tmp/previous.apk assets/df_roads.sqlite > app/src/main/assets/df_roads.sqlite
+          unzip -p /tmp/previous.apk assets/df_roads.sqlite > /tmp/df_roads_v1.sqlite
+          python tools/convert_offline_db.py /tmp/df_roads_v1.sqlite app/src/main/assets/df_roads_v2.sqlite
           python - <<'PY'
-          import sqlite3
-          db=sqlite3.connect("app/src/main/assets/df_roads.sqlite")
+          import sqlite3, math
+          db=sqlite3.connect("app/src/main/assets/df_roads_v2.sqlite")
           assert db.execute("pragma quick_check").fetchone()[0] == "ok"
+          assert db.execute("pragma user_version").fetchone()[0] == 2
           n=db.execute("select count(*) from roads").fetchone()[0]
-          print("Offline tagged road segments:",n)
-          assert n>=1000
+          k=db.execute("select count(*) from road_tiles").fetchone()[0]
+          assert n>=70000 and k>=n
+          row=db.execute("select lat1,lon1 from roads limit 1").fetchone()
+          lat,lon=(math.floor(row[0]*1000),math.floor(row[1]*1000))
+          hits=db.execute("select count(*) from road_tiles t join roads r on r.id=t.road_id where t.tile_lat between ? and ? and t.tile_lon between ? and ?",(lat-1,lat+1,lon-1,lon+1)).fetchone()[0]
+          assert hits>0
+          print("Verified portable SQLite tile lookup:",n,"roads",k,"tiles")
           db.close()
           PY
-      - name: Build Android v1.0.1
+      - name: Build Android v1.0.2
         run: gradle :app:assembleDebug --no-daemon --stacktrace
       - name: Check APK
         run: |
           test -s app/build/outputs/apk/debug/app-debug.apk
           sha256sum app/build/outputs/apk/debug/app-debug.apk
-          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -E 'classes.dex|assets/df_roads.sqlite|ic_speed_alert'
+          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -E 'classes.dex|assets/df_roads_v2.sqlite|ic_speed_alert'
       - uses: actions/upload-artifact@v4
         with:
-          name: PT2VHF-Speed-Alert-1.0.1-beta1-APK
+          name: PT2VHF-Speed-Alert-1.0.2-beta1-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
