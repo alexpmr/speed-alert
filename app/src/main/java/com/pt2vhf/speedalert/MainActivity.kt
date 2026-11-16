@@ -7,7 +7,7 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
-import android.text.InputType
+import android.view.WindowManager
 import android.view.Gravity
 import android.widget.*
 import java.util.Locale
@@ -17,9 +17,7 @@ class MainActivity: Activity() {
   private lateinit var limit:TextView
   private lateinit var status:TextView
   private lateinit var source:TextView
-  private lateinit var input:EditText
-  private lateinit var manual:Switch
-  private val pref by lazy { getSharedPreferences("config",MODE_PRIVATE) }
+  private val pref by lazy { AppConfig.prefs(this) }
   private val receiver=object:BroadcastReceiver() {
     override fun onReceive(c:Context?,i:Intent?) {
       if(i?.action==MonitorService.UPDATE)
@@ -53,23 +51,8 @@ class MainActivity: Activity() {
     add(box,status)
     source=text("Sem acesso à Internet necessário durante o trajeto.",13f)
     add(box,source)
-    manual=Switch(this).apply {
-      text="Limite manual (substitui o limite da base offline)"
-      setTextColor(Color.WHITE);isChecked=pref.getBoolean("manual",false)
-      setOnCheckedChangeListener { _,v ->
-        pref.edit().putBoolean("manual",v).apply()
-        input.isEnabled=v;saveManual()
-      }
-    }
-    add(box,manual)
-    input=EditText(this).apply {
-      inputType=InputType.TYPE_CLASS_NUMBER;gravity=Gravity.CENTER
-      setText(pref.getInt("manualLimit",60).toString());setTextColor(Color.WHITE)
-      hint="Limite km/h";isEnabled=manual.isChecked
-    }
-    add(box,input)
     val buttons=LinearLayout(this)
-    val start=Button(this).apply { text="INICIAR";setOnClickListener { saveManual();startMonitor() } }
+    val start=Button(this).apply { text="INICIAR";setOnClickListener { startMonitor() } }
     val stop=Button(this).apply {
       text="PARAR"
       setOnClickListener {
@@ -80,13 +63,15 @@ class MainActivity: Activity() {
     buttons.addView(start,LinearLayout.LayoutParams(0,-2,1f))
     buttons.addView(stop,LinearLayout.LayoutParams(0,-2,1f))
     add(box,buttons)
-    add(box,text("Tolerância: 0 km/h | Bipes: 250 ms / 350 ms | Volume: 80% | Base OSM offline",12f))
+    add(box,Button(this).apply {
+      text="CONFIGURAÇÕES"
+      setOnClickListener { startActivity(Intent(this@MainActivity,SettingsActivity::class.java)) }
+    })
+    add(box,text("Monitoramento independente • Ajustes em CONFIGURAÇÕES",12f))
     add(box,text("© OpenStreetMap contributors (ODbL). Base experimental: a sinalização oficial prevalece.",12f))
     setContentView(scroll)
-  }
-  private fun saveManual() {
-    val n=input.text.toString().toIntOrNull()
-    if(n!=null && n in 10..130) pref.edit().putInt("manualLimit",n).apply()
+    // Start automatically when user opens the app (not on device boot).
+    if(AppConfig.auto(pref)) startMonitor()
   }
   private fun startMonitor() {
     if(checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)!=PackageManager.PERMISSION_GRANTED) {
@@ -95,7 +80,13 @@ class MainActivity: Activity() {
       requestPermissions(perms.toTypedArray(),440)
       return
     }
-    startForegroundService(Intent(this,MonitorService::class.java).setAction(MonitorService.START))
+    try {
+      startForegroundService(Intent(this,MonitorService::class.java).setAction(MonitorService.START))
+      status.text="AGUARDANDO GPS"
+    } catch(e:Exception) {
+      status.text="NÃO FOI POSSÍVEL INICIAR"
+      Toast.makeText(this,e.localizedMessage?:"Falha no serviço",Toast.LENGTH_LONG).show()
+    }
   }
   override fun onRequestPermissionsResult(code:Int,perms:Array<out String>,results:IntArray) {
     super.onRequestPermissionsResult(code,perms,results)
@@ -108,6 +99,11 @@ class MainActivity: Activity() {
     if(Build.VERSION.SDK_INT>=33) registerReceiver(receiver,IntentFilter(MonitorService.UPDATE),Context.RECEIVER_NOT_EXPORTED)
     else @Suppress("DEPRECATION") registerReceiver(receiver,IntentFilter(MonitorService.UPDATE))
     MonitorService.latest?.let { render(it.speed,it.limit,it.status,it.source,it.alarm) }
+  }
+  override fun onResume() {
+    super.onResume()
+    if(AppConfig.screen(pref)) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
   }
   override fun onStop() { unregisterReceiver(receiver);super.onStop() }
   private fun render(v:Double,max:Double,message:String,origin:String,alarm:Boolean) {

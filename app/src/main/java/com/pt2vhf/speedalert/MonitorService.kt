@@ -20,18 +20,35 @@ class MonitorService:Service() {
     @Volatile var latest:State?=null
   }
   private val handler=Handler(Looper.getMainLooper())
-  private val prefs by lazy { getSharedPreferences("config",MODE_PRIVATE) }
+  private val prefs by lazy { AppConfig.prefs(this) }
   private lateinit var locationManager:LocationManager
   private lateinit var roads:Roads
   private var tone:ToneGenerator?=null
+  private var toneVolume=-1
+  private var lastMode=""
   private var playing=false
   private var running=false
   private var lastFix=0L
   private val beep=object:Runnable {
     override fun run() {
       if(!playing) return
-      try { tone?.startTone(ToneGenerator.TONE_PROP_BEEP,250) } catch(_:Exception) {}
-      handler.postDelayed(this,600L)
+      val mode=AppConfig.mode(prefs)
+      try {
+        if(mode=="CONTINUO") {
+          if(lastMode!="CONTINUO") {
+            tone?.stopTone()
+            tone?.startTone(ToneGenerator.TONE_PROP_BEEP)
+          }
+          lastMode=mode
+          handler.postDelayed(this,250L)
+        } else {
+          if(lastMode=="CONTINUO") tone?.stopTone()
+          val beepDuration=AppConfig.beepMs(prefs)
+          tone?.startTone(ToneGenerator.TONE_PROP_BEEP,beepDuration)
+          lastMode=mode
+          handler.postDelayed(this,(beepDuration+AppConfig.pauseMs(prefs)).toLong())
+        }
+      } catch(_:Exception) { handler.postDelayed(this,600L) }
     }
   }
   private val checkStale=object:Runnable {
@@ -51,7 +68,7 @@ class MonitorService:Service() {
     super.onCreate()
     locationManager=getSystemService(LOCATION_SERVICE) as LocationManager
     roads=Roads(this)
-    tone=ToneGenerator(AudioManager.STREAM_MUSIC,80)
+    refreshAudio()
     (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(
       NotificationChannel("speed","PT2VHF velocidade",NotificationManager.IMPORTANCE_LOW))
   }
@@ -85,33 +102,54 @@ class MonitorService:Service() {
     }
     lastFix=SystemClock.elapsedRealtime()
     val speed=loc.speed.toDouble()*3.6
-    val selected=if(prefs.getBoolean("manual",false))
-      Roads.Result(prefs.getInt("manualLimit",60).toDouble(),"MANUAL")
-    else roads.resolve(loc)
+    val selected=when {
+      AppConfig.manual(prefs) ->
+        Roads.Result(AppConfig.manualLimit(prefs).toDouble(),"MANUAL")
+      !AppConfig.offline(prefs) ->
+        Roads.Result(null,"BASE OFFLINE DESATIVADA")
+      else -> roads.resolve(loc)
+    }
     val max=selected.limit
-    val excess=max!=null && speed>max
-    publish(State(speed,max?:-1.0,
-      if(max==null) "LIMITE DESCONHECIDO" else if(excess) "VELOCIDADE EXCEDIDA" else "DENTRO DO LIMITE",
-      selected.source,excess))
+    val excess=max!=null && speed>max+AppConfig.tolerance(prefs)
+    val message=when {
+      max==null -> if(AppConfig.warnUnknown(prefs)) "LIMITE DESCONHECIDO" else "SEM LIMITE IDENTIFICADO"
+      excess -> "VELOCIDADE EXCEDIDA"
+      else -> "DENTRO DO LIMITE"
+    }
+    publish(State(speed,max?:-1.0,message,selected.source,excess))
+  }
+  private fun refreshAudio() {
+    val v=AppConfig.volume(prefs)
+    if(tone!=null && toneVolume==v) return
+    handler.removeCallbacks(beep)
+    try { tone?.stopTone() } catch(_:Exception){}
+    tone?.release()
+    tone=ToneGenerator(AudioManager.STREAM_MUSIC,v)
+    toneVolume=v
+    lastMode=""
+    if(playing) handler.post(beep)
   }
   private fun publish(s:State) {
     latest=s
+    refreshAudio()
     if(s.alarm) startBeep() else stopBeep()
     sendBroadcast(Intent(UPDATE).setPackage(packageName).apply {
       putExtra("speed",s.speed);putExtra("limit",s.limit)
       putExtra("status",s.status);putExtra("source",s.source);putExtra("alarm",s.alarm)
     })
     val speed=if(s.speed>=0) String.format(Locale.US,"%.1f km/h",s.speed) else "GPS indisponível"
-    (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(
-      101,notification(speed+" — "+s.status))
+    try {
+      (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(
+        101,notification(speed+" — "+s.status))
+    } catch(_:SecurityException) { /* permission denied: location service still runs */ }
   }
   private fun startBeep() {
     if(playing) return
-    playing=true;handler.post(beep)
+    playing=true;lastMode="";handler.post(beep)
   }
   private fun stopBeep() {
     if(!playing) return
-    playing=false;handler.removeCallbacks(beep)
+    playing=false;lastMode="";handler.removeCallbacks(beep)
     try { tone?.stopTone() } catch(_:Exception){}
   }
   private fun notification(s:String):Notification {
@@ -119,7 +157,7 @@ class MonitorService:Service() {
       PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     val stop=PendingIntent.getService(this,2,Intent(this,MonitorService::class.java).setAction(STOP),
       PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-    return Notification.Builder(this,"speed").setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+    return Notification.Builder(this,"speed").setSmallIcon(R.drawable.ic_speed_alert)
       .setContentTitle("PT2VHF Speed Alert").setContentText(s).setContentIntent(open)
       .setOngoing(true).addAction(Notification.Action.Builder(null,"Parar",stop).build()).build()
   }
