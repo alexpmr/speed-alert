@@ -20,12 +20,14 @@ jobs:
         uses: android-actions/setup-android@v4
       - name: Install Android platform
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Compile Kotlin before downloading map data
+        run: gradle :app:compileDebugKotlin --no-daemon --stacktrace
       - name: Build offline OSM v3 data with validated fallback
         run: |
           set -euo pipefail
           mkdir -p app/src/main/assets
           PBF=/tmp/centro-oeste.osm.pbf
-          if curl --fail --location --retry 2 --retry-all-errors --max-time 160 \
+          if curl --fail --location --retry 1 --retry-all-errors --connect-timeout 8 --max-time 65 \
             -o "$PBF" https://download-ext2.geofabrik.de/south-america/brazil/centro-oeste-latest.osm.pbf ||
              curl --fail --location --retry 2 --retry-all-errors --max-time 160 \
             -o "$PBF" https://download.geofabrik.de/south-america/brazil/centro-oeste-latest.osm.pbf; then
