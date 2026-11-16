@@ -5,10 +5,14 @@
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+  <uses-permission android:name="android.permission.INTERNET"/>
+  <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
   <uses-feature android:name="android.hardware.location.gps" android:required="true"/>
-  <application android:label="PT2VHF Speed Alert" android:theme="@android:style/Theme.Material.NoActionBar"
-      android:icon="@drawable/ic_speed_alert" android:roundIcon="@drawable/ic_speed_alert"
-      android:allowBackup="false">
+  <application android:label="PT2VHF Speed Alert"
+    android:theme="@android:style/Theme.Material.NoActionBar"
+    android:icon="@drawable/ic_speed_alert"
+    android:roundIcon="@drawable/ic_speed_alert"
+    android:usesCleartextTraffic="false" android:allowBackup="false">
     <activity android:name=".SettingsActivity" android:exported="false"/>
     <activity android:name=".MainActivity" android:exported="false"/>
     <activity android:name=".SplashActivity" android:exported="true">
@@ -17,6 +21,13 @@
         <category android:name="android.intent.category.LAUNCHER"/>
       </intent-filter>
     </activity>
-    <service android:name=".MonitorService" android:foregroundServiceType="location" android:exported="false"/>
+    <service android:name=".MonitorService"
+      android:foregroundServiceType="location" android:exported="false"/>
+    <provider android:name="androidx.core.content.FileProvider"
+      android:authorities="com.pt2vhf.speedalert.fileprovider"
+      android:exported="false" android:grantUriPermissions="true">
+      <meta-data android:name="android.support.FILE_PROVIDER_PATHS"
+        android:resource="@xml/file_paths"/>
+    </provider>
   </application>
 </manifest>

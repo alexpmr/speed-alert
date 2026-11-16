@@ -6,8 +6,8 @@ android {
         applicationId="com.pt2vhf.speedalert"
         minSdk=26
         targetSdk=34
-        versionCode=3
-        versionName="1.0.2-beta.1"
+        versionCode=4
+        versionName="1.0.3-beta.1"
     }
     compileOptions {
         sourceCompatibility=JavaVersion.VERSION_17
@@ -15,3 +15,4 @@ android {
     }
     kotlinOptions { jvmTarget="17" }
 }
+dependencies { implementation("androidx.core:core:1.15.0") }
