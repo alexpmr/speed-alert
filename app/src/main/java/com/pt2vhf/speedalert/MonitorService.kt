@@ -12,10 +12,15 @@ import android.os.*
 import java.util.Locale
 
 class MonitorService:Service() {
-  data class State(val speed:Double,val limit:Double,val status:String,val source:String,val alarm:Boolean)
+  data class State(
+    val speed:Double,val limit:Double,val status:String,val source:String,val alarm:Boolean,
+    val roadName:String="Via não identificada",val radarMeters:Double?=null,
+    val radarActive:Boolean=false,val muted:Boolean=false
+  )
   companion object {
     const val START="com.pt2vhf.speedalert.START"
     const val STOP="com.pt2vhf.speedalert.STOP"
+    const val MUTE="com.pt2vhf.speedalert.MUTE"
     const val UPDATE="com.pt2vhf.speedalert.UPDATE"
     @Volatile var latest:State?=null
   }
@@ -32,7 +37,7 @@ class MonitorService:Service() {
   private val beep=object:Runnable {
     override fun run() {
       if(!playing) return
-      val mode=AppConfig.mode(prefs)
+      val mode=if(latest?.radarActive==true) "CONTINUO" else AppConfig.mode(prefs)
       try {
         if(mode=="CONTINUO") {
           if(lastMode!="CONTINUO") {
@@ -80,6 +85,10 @@ class MonitorService:Service() {
       latest=null
       return START_NOT_STICKY
     }
+    if(intent?.action==MUTE) {
+      latest?.let { publish(it.copy(muted=AppConfig.muted(prefs))) }
+      return START_NOT_STICKY
+    }
     if(intent?.action!=START || running) return START_NOT_STICKY
     if(checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)!=PackageManager.PERMISSION_GRANTED) {
       stopSelf();return START_NOT_STICKY
@@ -102,21 +111,22 @@ class MonitorService:Service() {
     }
     lastFix=SystemClock.elapsedRealtime()
     val speed=loc.speed.toDouble()*3.6
-    val selected=when {
-      AppConfig.manual(prefs) ->
-        Roads.Result(AppConfig.manualLimit(prefs).toDouble(),"MANUAL")
-      !AppConfig.offline(prefs) ->
-        Roads.Result(null,"BASE OFFLINE DESATIVADA")
-      else -> roads.resolve(loc)
-    }
-    val max=selected.limit
+    val selected=if(AppConfig.offline(prefs)) roads.resolve(loc,AppConfig.radarRange(prefs).toDouble())
+      else Roads.Result(null,"BASE OFFLINE DESATIVADA")
+    val max=if(AppConfig.manual(prefs)) AppConfig.manualLimit(prefs).toDouble() else selected.limit
     val excess=max!=null && speed>max+AppConfig.tolerance(prefs)
+    val radarExcess=selected.radarDistance!=null && selected.radarLimit!=null &&
+      speed>selected.radarLimit+AppConfig.tolerance(prefs)
     val message=when {
+      radarExcess -> "EXCESSO PRÓXIMO AO RADAR"
       max==null -> if(AppConfig.warnUnknown(prefs)) "LIMITE DESCONHECIDO" else "SEM LIMITE IDENTIFICADO"
       excess -> "VELOCIDADE EXCEDIDA"
       else -> "DENTRO DO LIMITE"
     }
-    publish(State(speed,max?:-1.0,message,selected.source,excess))
+    publish(State(speed,max?:-1.0,message,
+      if(AppConfig.manual(prefs)) "MANUAL • "+selected.source else selected.source,
+      excess || radarExcess,selected.roadName,selected.radarDistance,
+      radarExcess,AppConfig.muted(prefs)))
   }
   private fun refreshAudio() {
     val v=AppConfig.volume(prefs)
@@ -132,10 +142,12 @@ class MonitorService:Service() {
   private fun publish(s:State) {
     latest=s
     refreshAudio()
-    if(s.alarm) startBeep() else stopBeep()
+    if(s.alarm && !s.muted) startBeep() else stopBeep()
     sendBroadcast(Intent(UPDATE).setPackage(packageName).apply {
       putExtra("speed",s.speed);putExtra("limit",s.limit)
       putExtra("status",s.status);putExtra("source",s.source);putExtra("alarm",s.alarm)
+      putExtra("road",s.roadName);putExtra("radar",s.radarMeters?:-1.0)
+      putExtra("radarActive",s.radarActive);putExtra("muted",s.muted)
     })
     val speed=if(s.speed>=0) String.format(Locale.US,"%.1f km/h",s.speed) else "GPS indisponível"
     try {

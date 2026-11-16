@@ -15,4 +15,8 @@ object AppConfig {
   fun pauseMs(p: SharedPreferences) = p.getInt("pauseMs",350).coerceIn(100,2000)
   fun mode(p: SharedPreferences) = p.getString("soundMode","BIPES") ?: "BIPES"
   fun warnUnknown(p: SharedPreferences) = p.getBoolean("warnUnknown",true)
+  fun muted(p: SharedPreferences) = p.getBoolean("muted",false)
+  fun shareStats(p: SharedPreferences) = p.getBoolean("shareStats",false)
+  fun radarRange(p: SharedPreferences) = p.getInt("radarRange",300).coerceIn(100,1000)
+  fun autoUpdates(p: SharedPreferences) = p.getBoolean("autoUpdates",true)
 }
