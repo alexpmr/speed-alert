@@ -1,15 +1,23 @@
-# PT2VHF Speed Alert — v1.0.0-beta.1
+# PT2VHF Speed Alert — v1.0.1-beta.1
 
-Standalone Android app (Kotlin; GPS, no maps, no radar, no internet permission).
-The display shows current GNSS speed and an offline OpenStreetMap speed limit when a segment can be identified. An explicit manual override can be selected for missing data.
-Zero tolerance means > limit activates 250 ms repeating beeps separated by 350 ms silence, at 80% of the media audio route. Display stays active in background via location Foreground Service after the user starts it.
+Aplicativo Android independente para avisar excesso de velocidade, inclusive sem radar.
 
-## Android build
-Use Gradle 8.10.2, AGP 8.7.2, JDK 17 and SDK 35.
-Offline database generator: Python 3, osmium, Centro-Oeste PBF from Geofabrik.
-Run `gradle :app:assembleDebug` inside speed-alert.
+## Recursos entregues
+- Ícone próprio do Speed Alert (velocímetro e sinal de advertência).
+- Tela **Configurações**: tolerância, volume, duração e intervalo dos bipes, som contínuo ou bipes, base offline, limite manual, manter tela ligada, aviso de limite desconhecido.
+- **Iniciar ligado**: por padrão o serviço de monitoramento é iniciado automaticamente ao abrir o app, após autorização de GPS. Não inicia sozinho ao ligar o telefone.
+- GPS e serviço em primeiro plano, inclusive com tela apagada durante a sessão.
+- Base OpenStreetMap offline de velocidades explícitas do Distrito Federal e entorno.
+- Alerta quando velocidade GPS > limite cadastrado + tolerância; por padrão, 0 km/h.
+- Sem permissão de Internet, sem mapas e sem integração a radares.
 
-## License and safety
-Data © OpenStreetMap contributors, ODbL 1.0. OpenStreetMap may not have maxspeed or may be outdated; unclear roads show unknown rather than guessing. Traffic signs prevail. Manual limit is explicitly marked. Not field-tested; use on a fixed stand without interacting while driving.
+## Configurações padrão
+Tolerância 0 km/h; volume relativo 80%; bipe 250 ms, intervalo 350 ms; offline ligado; monitoramento automático ligado; limite manual desligado.
 
-The project is on a dedicated build-only branch of a pre-existing GitHub repository; main is unaffected.
+## Compilação
+Gradle 8.10.2, JDK 17, Android SDK 35. O GitHub Actions baixa o extrato Geofabrik Centro-Oeste e gera o banco SQLite incluído no APK.
+
+## Atenção
+Versão beta de testes, sem validação em campo. Limites da base OSM podem estar ausentes ou incorretos, e identificação de pistas paralelas é incerta. Sinalização da via prevalece. Builds de debug do GitHub Actions podem ter assinaturas distintas; para instalar esta beta, pode ser necessário desinstalar a anterior (com perda de preferências).
+
+Dados: © OpenStreetMap contributors, ODbL 1.0. https://www.openstreetmap.org/copyright
