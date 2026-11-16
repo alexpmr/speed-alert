@@ -1,0 +1,32 @@
+name: Publish beta APK on GitHub Releases
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-apk.yml'
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download successful Android build APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p apk
+          gh run download 43932221946 --repo "${{ github.repository }}" --name PT2VHF-Speed-Alert-1.0.0-beta1-APK --dir apk
+          test -s apk/app-debug.apk
+          mv apk/app-debug.apk apk/PT2VHF-Speed-Alert-v1.0.0-beta.1.apk
+          sha256sum apk/PT2VHF-Speed-Alert-v1.0.0-beta.1.apk | tee apk/SHA256SUMS.txt
+      - name: Publish public beta download
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view v1.0.0-beta.1 --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload v1.0.0-beta.1 apk/PT2VHF-Speed-Alert-v1.0.0-beta.1.apk apk/SHA256SUMS.txt --repo "${{ github.repository }}" --clobber
+          else
+            gh release create v1.0.0-beta.1 apk/PT2VHF-Speed-Alert-v1.0.0-beta.1.apk apk/SHA256SUMS.txt --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "PT2VHF Speed Alert 1.0.0-beta.1" --notes "Beta para Android 8+. GPS, alerta sonoro e limites de velocidade offline (OSM DF). Ainda nao homologado em testes de campo. APK assinado com chave de depuracao; nao e release de producao." --prerelease
+          fi
