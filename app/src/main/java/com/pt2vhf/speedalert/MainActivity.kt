@@ -101,7 +101,7 @@ class MainActivity:Activity() {
     super.onCreate(savedInstanceState)
     window.statusBarColor=navy
     window.navigationBarColor=navy
-    val scroll=ScrollView(this).apply { setBackgroundColor(navy);fillViewport=true }
+    val scroll=ScrollView(this).apply { setBackgroundColor(navy);isFillViewport=true }
     val root=section().apply {setPadding(dp(18),dp(14),dp(18),dp(24))}
     scroll.addView(root)
     val header=LinearLayout(this).apply {orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
