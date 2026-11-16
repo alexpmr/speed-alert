@@ -1,23 +1,22 @@
-# PT2VHF Speed Alert — v1.0.1-beta.1
+# PT2VHF Speed Alert v1.0.3-beta.1
 
-Aplicativo Android independente para avisar excesso de velocidade, inclusive sem radar.
+Aplicativo Android independente (8.0+) com velocidade GNSS e limites offline OSM no DF e entorno.
 
-## Recursos entregues
-- Ícone próprio do Speed Alert (velocímetro e sinal de advertência).
-- Tela **Configurações**: tolerância, volume, duração e intervalo dos bipes, som contínuo ou bipes, base offline, limite manual, manter tela ligada, aviso de limite desconhecido.
-- **Iniciar ligado**: por padrão o serviço de monitoramento é iniciado automaticamente ao abrir o app, após autorização de GPS. Não inicia sozinho ao ligar o telefone.
-- GPS e serviço em primeiro plano, inclusive com tela apagada durante a sessão.
-- Base OpenStreetMap offline de velocidades explícitas do Distrito Federal e entorno.
-- Alerta quando velocidade GPS > limite cadastrado + tolerância; por padrão, 0 km/h.
-- Sem permissão de Internet, sem mapas e sem integração a radares.
-
-## Configurações padrão
-Tolerância 0 km/h; volume relativo 80%; bipe 250 ms, intervalo 350 ms; offline ligado; monitoramento automático ligado; limite manual desligado.
+## Recursos
+- Interface adaptativa, versão no cabeçalho, placa circular de limite, velocidade inteira e nome da via abaixo da placa.
+- Velocidade verde abaixo de 95%, amarelo entre 95% e 100%, vermelho piscando acima do limite. Sem limite, neutro.
+- O monitoramento inicia após aceite do aviso; sem botão de Iniciar.
+- Botão Silenciar altera somente áudio, nunca desliga GPS ou avisos visuais.
+- Dados OSM v3: vias, limites explícitos, nomes/referências e radares em nós vinculados às vias.
+- Alertas independentes de radares; tom contínuo quando radar da mesma way à frente e excesso verificado (experimental).
+- Consulta OTA GitHub Releases, download HTTPS com SHA-256 e instalação com confirmação do Android.
+- Estatísticas opt-in no site /speed: UUID aleatório por instalação e versão, sem dados de trajetos ou posição.
+- Operação de GPS/limites/alertas completamente offline; OTA só com Internet.
 
 ## Compilação
-Gradle 8.10.2, JDK 17, Android SDK 35. O GitHub Actions baixa o extrato Geofabrik Centro-Oeste e gera o banco SQLite incluído no APK.
+JDK 17, Gradle 8.10.2, SDK 35, Python 3 e osmium. O Actions baixa o extrato Centro-Oeste Geofabrik e gera SQLite v3.
 
-## Atenção
-Versão beta de testes, sem validação em campo. Limites da base OSM podem estar ausentes ou incorretos, e identificação de pistas paralelas é incerta. Sinalização da via prevalece. Builds de debug do GitHub Actions podem ter assinaturas distintas; para instalar esta beta, pode ser necessário desinstalar a anterior (com perda de preferências).
+## Limitações
+Beta ainda sem teste em dispositivo/carro. Bases OSM podem ser incompletas; falsos negativos/positivos de limite ou radar são possíveis, sobretudo em vias paralelas. A sinalização oficial prevalece. Uma assinatura debug variável entre builds pode exigir desinstalar a versão anterior; a assinatura de produção deve ser persistente antes de considerar o OTA transparente. Android Auto e Android Automotive não equivalem a APK instalado numa central Android comum.
 
-Dados: © OpenStreetMap contributors, ODbL 1.0. https://www.openstreetmap.org/copyright
+© OpenStreetMap contributors, ODbL 1.0. https://www.openstreetmap.org/copyright
