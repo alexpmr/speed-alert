@@ -20,23 +20,36 @@ jobs:
         uses: android-actions/setup-android@v4
       - name: Install Android platform
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
-      - name: Build regional offline OSM v3 speed/name/radar database
+      - name: Build offline OSM v3 data with validated fallback
         run: |
           set -euo pipefail
-          python -m pip install osmium
-          curl --fail --location --retry 3 --connect-timeout 25 \
-            -o /tmp/centro-oeste.osm.pbf \
-            https://download.geofabrik.de/south-america/brazil/centro-oeste-latest.osm.pbf
-          python tools/build_osm_v3.py /tmp/centro-oeste.osm.pbf app/src/main/assets/df_roads_v3.sqlite
+          mkdir -p app/src/main/assets
+          PBF=/tmp/centro-oeste.osm.pbf
+          if curl --fail --location --retry 2 --retry-all-errors --max-time 160 \
+            -o "$PBF" https://download-ext2.geofabrik.de/south-america/brazil/centro-oeste-latest.osm.pbf ||
+             curl --fail --location --retry 2 --retry-all-errors --max-time 160 \
+            -o "$PBF" https://download.geofabrik.de/south-america/brazil/centro-oeste-latest.osm.pbf; then
+            python -m pip install osmium
+            python tools/build_osm_v3.py "$PBF" app/src/main/assets/df_roads_v3.sqlite
+            echo "OFFLINE_SOURCE=GE0FABRIK_FULL"
+          else
+            echo "::warning::Geofabrik unavailable: using validated v2 limits without street/radar coverage"
+            curl --fail --location --retry 3 -o /tmp/previous.apk \
+              https://github.com/alexpmr/speed-alert/releases/download/v1.0.2-beta.1/PT2VHF-Speed-Alert-v1.0.2-beta.1.apk
+            unzip -p /tmp/previous.apk assets/df_roads_v2.sqlite > /tmp/old-v2.sqlite
+            python tools/upgrade_v2_to_v3.py /tmp/old-v2.sqlite app/src/main/assets/df_roads_v3.sqlite
+            echo "OFFLINE_SOURCE=FALLBACK_V2"
+          fi
           python - <<'PY'
           import sqlite3
-          db=sqlite3.connect('app/src/main/assets/df_roads_v3.sqlite')
+          p='app/src/main/assets/df_roads_v3.sqlite'
+          db=sqlite3.connect(p)
           assert db.execute('PRAGMA quick_check').fetchone()[0]=='ok'
           assert db.execute('PRAGMA user_version').fetchone()[0]==3
           counts=[db.execute('SELECT COUNT(*) FROM '+t).fetchone()[0] for t in ('roads','road_tiles','cameras')]
           assert counts[0]>=50000 and counts[1]>=50000
-          assert db.execute("SELECT COUNT(*) FROM roads WHERE name<>'' OR ref<>''").fetchone()[0]>20000
-          print('OFFLINE_V3_OK',counts)
+          named=db.execute("SELECT COUNT(*) FROM roads WHERE name<>'' OR ref<>''").fetchone()[0]
+          print("OFFLINE_V3_OK",counts,"named segments",named)
           db.close()
           PY
       - name: Build Android v1.0.3 beta
