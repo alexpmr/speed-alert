@@ -70,8 +70,11 @@ class MainActivity: Activity() {
     add(box,text("Monitoramento independente • Ajustes em CONFIGURAÇÕES",12f))
     add(box,text("© OpenStreetMap contributors (ODbL). Base experimental: a sinalização oficial prevalece.",12f))
     setContentView(scroll)
-    // Start automatically when user opens the app (not on device boot).
-    if(AppConfig.auto(pref)) startMonitor()
+    // Consent gate always precedes auto-start and location permission requests.
+    StartupDisclaimer.show(this) {
+      if (AppConfig.auto(pref)) startMonitor()
+      else status.text="MONITORAMENTO PARADO"
+    }
   }
   private fun startMonitor() {
     if(checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)!=PackageManager.PERMISSION_GRANTED) {
