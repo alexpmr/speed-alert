@@ -5,7 +5,7 @@ import android.content.SharedPreferences
 object AppConfig {
   fun prefs(c: Context) = c.getSharedPreferences("config", Context.MODE_PRIVATE)
   fun auto(p: SharedPreferences) = p.getBoolean("autoStart",true)
-  fun screen(p: SharedPreferences) = p.getBoolean("keepScreenOn",false)
+  fun screen(p: SharedPreferences) = p.getBoolean("keepScreenOn",true)
   fun offline(p: SharedPreferences) = p.getBoolean("offline",true)
   fun manual(p: SharedPreferences) = p.getBoolean("manual",false)
   fun manualLimit(p: SharedPreferences) = p.getInt("manualLimit",60).coerceIn(10,160)

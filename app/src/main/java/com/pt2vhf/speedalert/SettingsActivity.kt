@@ -70,7 +70,7 @@ class SettingsActivity : Activity() {
     add(root,label("CONFIGURAÇÕES",24f,green))
     add(root,label("MONITORAMENTO",18f,green))
     add(root,label("O monitoramento inicia automaticamente após Continuar no aviso.",13f,Color.LTGRAY))
-    toggle(root,"Manter a tela ligada","keepScreenOn",false)
+    toggle(root,"Manter a tela ligada","keepScreenOn",true)
     toggle(root,"Consultar base de limites offline","offline",true)
     toggle(root,"Mostrar aviso de limite desconhecido","warnUnknown",true)
     val useManual=toggle(root,"Usar limite manual","manual",false) { enabled ->
@@ -83,19 +83,23 @@ class SettingsActivity : Activity() {
     add(root,label("ALARME SONORO",18f,green))
     seek(root,"Volume relativo","volume",80,100,"%")
     add(root,label("Tipo de alarme",14f))
-    val options=arrayOf("Bipes repetitivos","Tom ininterrupto")
+    val options=arrayOf("Bipes simples","Bipes duplos","Bipes triplos",
+      "Sirene alternada","Alerta suave","Tom ininterrupto")
+    val modeKeys=arrayOf("BIPES","DUPLO","TRIPLO","SIRENE","SUAVE","CONTINUO")
     val spinner=Spinner(this)
     spinner.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,options)
-    spinner.setSelection(if(AppConfig.mode(p)=="CONTINUO") 1 else 0)
+    spinner.setSelection(modeKeys.indexOf(AppConfig.mode(p)).coerceAtLeast(0))
     spinner.onItemSelectedListener=object:android.widget.AdapterView.OnItemSelectedListener {
       override fun onItemSelected(parent:android.widget.AdapterView<*>?,view:View?,position:Int,id:Long){
-        p.edit().putString("soundMode",if(position==1) "CONTINUO" else "BIPES").apply()
+        p.edit().putString("soundMode",modeKeys[position]).apply()
       }
       override fun onNothingSelected(parent:android.widget.AdapterView<*>?){}
     }
     add(root,spinner)
     beepMs=edit(root,"Duração dos bipes (100–1000 ms)",AppConfig.beepMs(p))
     pauseMs=edit(root,"Intervalo entre bipes (100–2000 ms)",AppConfig.pauseMs(p))
+    add(root,label("ALARMES EM SEGUNDO PLANO",18f,green))
+    add(root,label("O serviço de localização mantém os alertas ativos com a tela bloqueada ou quando Waze/Google Maps estiverem visíveis. A reprodução pode depender da política de áudio da central multimídia, do Android e das permissões.",12f,Color.LTGRAY))
     add(root,label("ATUALIZAÇÕES E PRIVACIDADE",18f,green))
     toggle(root,"Verificar novas atualizações periodicamente","autoUpdates",true) {
       UpdateScheduler.sync(this)

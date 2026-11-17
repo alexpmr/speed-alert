@@ -6,8 +6,6 @@ import android.content.*
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.location.*
-import android.media.AudioManager
-import android.media.ToneGenerator
 import android.os.*
 import java.util.Locale
 
@@ -15,7 +13,8 @@ class MonitorService:Service() {
   data class State(
     val speed:Double,val limit:Double,val status:String,val source:String,val alarm:Boolean,
     val roadName:String="Via não identificada",val radarMeters:Double?=null,
-    val radarActive:Boolean=false,val muted:Boolean=false
+    val radarActive:Boolean=false,val muted:Boolean=false,
+    val gpsAccuracy:Float=-1f
   )
   companion object {
     const val START="com.pt2vhf.speedalert.START"
@@ -28,34 +27,9 @@ class MonitorService:Service() {
   private val prefs by lazy { AppConfig.prefs(this) }
   private lateinit var locationManager:LocationManager
   private lateinit var roads:Roads
-  private var tone:ToneGenerator?=null
-  private var toneVolume=-1
-  private var lastMode=""
-  private var playing=false
+  private lateinit var audio:AlarmAudio
   private var running=false
   private var lastFix=0L
-  private val beep=object:Runnable {
-    override fun run() {
-      if(!playing) return
-      val mode=if(latest?.radarActive==true) "CONTINUO" else AppConfig.mode(prefs)
-      try {
-        if(mode=="CONTINUO") {
-          if(lastMode!="CONTINUO") {
-            tone?.stopTone()
-            tone?.startTone(ToneGenerator.TONE_PROP_BEEP)
-          }
-          lastMode=mode
-          handler.postDelayed(this,250L)
-        } else {
-          if(lastMode=="CONTINUO") tone?.stopTone()
-          val beepDuration=AppConfig.beepMs(prefs)
-          tone?.startTone(ToneGenerator.TONE_PROP_BEEP,beepDuration)
-          lastMode=mode
-          handler.postDelayed(this,(beepDuration+AppConfig.pauseMs(prefs)).toLong())
-        }
-      } catch(_:Exception) { handler.postDelayed(this,600L) }
-    }
-  }
   private val checkStale=object:Runnable {
     override fun run() {
       if(running && SystemClock.elapsedRealtime()-lastFix>5000L)
@@ -73,13 +47,13 @@ class MonitorService:Service() {
     super.onCreate()
     locationManager=getSystemService(LOCATION_SERVICE) as LocationManager
     roads=Roads(this)
-    refreshAudio()
+    audio=AlarmAudio(this)
     (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(
       NotificationChannel("speed","PT2VHF velocidade",NotificationManager.IMPORTANCE_LOW))
   }
   override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int {
     if(intent?.action==STOP) {
-      running=false;handler.removeCallbacks(checkStale);stopBeep()
+      running=false;handler.removeCallbacks(checkStale);audio.stop()
       try { locationManager.removeUpdates(listener) } catch(_:Exception){}
       stopForeground(STOP_FOREGROUND_REMOVE);stopSelf()
       latest=null
@@ -126,43 +100,25 @@ class MonitorService:Service() {
     publish(State(speed,max?:-1.0,message,
       if(AppConfig.manual(prefs)) "MANUAL • "+selected.source else selected.source,
       excess || radarExcess,selected.roadName,selected.radarDistance,
-      radarExcess,AppConfig.muted(prefs)))
-  }
-  private fun refreshAudio() {
-    val v=AppConfig.volume(prefs)
-    if(tone!=null && toneVolume==v) return
-    handler.removeCallbacks(beep)
-    try { tone?.stopTone() } catch(_:Exception){}
-    tone?.release()
-    tone=ToneGenerator(AudioManager.STREAM_MUSIC,v)
-    toneVolume=v
-    lastMode=""
-    if(playing) handler.post(beep)
+      radarExcess,AppConfig.muted(prefs),loc.accuracy))
   }
   private fun publish(s:State) {
     latest=s
-    refreshAudio()
-    if(s.alarm && !s.muted) startBeep() else stopBeep()
+    audio.setAlert(s.alarm && !s.muted,
+      if(s.radarActive)"CONTINUO" else AppConfig.mode(prefs),
+      AppConfig.volume(prefs),AppConfig.beepMs(prefs),AppConfig.pauseMs(prefs))
     sendBroadcast(Intent(UPDATE).setPackage(packageName).apply {
       putExtra("speed",s.speed);putExtra("limit",s.limit)
       putExtra("status",s.status);putExtra("source",s.source);putExtra("alarm",s.alarm)
       putExtra("road",s.roadName);putExtra("radar",s.radarMeters?:-1.0)
       putExtra("radarActive",s.radarActive);putExtra("muted",s.muted)
+      putExtra("accuracy",s.gpsAccuracy)
     })
     val speed=if(s.speed>=0) String.format(Locale.US,"%.1f km/h",s.speed) else "GPS indisponível"
     try {
       (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(
         101,notification(speed+" — "+s.status))
     } catch(_:SecurityException) { /* permission denied: location service still runs */ }
-  }
-  private fun startBeep() {
-    if(playing) return
-    playing=true;lastMode="";handler.post(beep)
-  }
-  private fun stopBeep() {
-    if(!playing) return
-    playing=false;lastMode="";handler.removeCallbacks(beep)
-    try { tone?.stopTone() } catch(_:Exception){}
   }
   private fun notification(s:String):Notification {
     val open=PendingIntent.getActivity(this,1,Intent(this,MainActivity::class.java),
@@ -174,9 +130,9 @@ class MonitorService:Service() {
       .setOngoing(true).addAction(Notification.Action.Builder(null,"Parar",stop).build()).build()
   }
   override fun onDestroy() {
-    running=false;handler.removeCallbacks(checkStale);stopBeep()
+    running=false;handler.removeCallbacks(checkStale);audio.stop()
     try { locationManager.removeUpdates(listener) } catch(_:Exception){}
-    tone?.release();latest=null
+    audio.close();latest=null
     super.onDestroy()
   }
   override fun onBind(intent:Intent?):IBinder?=null
