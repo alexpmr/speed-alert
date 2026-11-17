@@ -2,55 +2,76 @@ package com.pt2vhf.speedalert
 
 import android.app.Activity
 import android.app.AlertDialog
-import android.content.Intent
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
-import android.os.Environment
 import android.provider.Settings
 import android.widget.Toast
 import androidx.core.content.FileProvider
-import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 import java.util.UUID
 
 /**
- * GitHub Releases OTA: check on a worker thread, verify SHA-256 and ask the
- * Android package installer for confirmation. Core speed monitoring never waits for it.
+ * Official OTA provider: PT2VHF website, NOT GitHub's release API.
+ * The website may redirect a counted APK download to its binary storage.
+ * Driving, GPS, map matching and alarms never depend on this API.
  */
 object UpdateManager {
-  private const val releases="https://api.github.com/repos/alexpmr/speed-alert/releases?per_page=10"
-  private const val activityUrl="https://www.pt2vhf.com/speed_activity.php"
+  private const val catalogUrl =
+    "https://www.pt2vhf.com/update.php?product=speed&platform=android&kind=apk"
+  private const val activityUrl = "https://www.pt2vhf.com/speed_activity.php"
 
+  private data class Package(
+    val version:String,val notes:String,val url:String,val sha256:String,
+    val size:Long,val filename:String
+  )
   private fun currentVersion(context:Context):String=try {
     context.packageManager.getPackageInfo(context.packageName,0).versionName ?: "0.0.0"
-  }catch(_:Exception){"0.0.0"}
+  } catch(_:Exception) {"0.0.0"}
 
-  private fun versionParts(s:String):List<Int> {
-    val matched=Regex("^(?:v)?([0-9]+)\\.([0-9]+)\\.([0-9]+)").find(s)?:return listOf(0,0,0)
-    return (1..3).map {matched.groupValues[it].toIntOrNull()?:0}
+  private data class V(val major:Int,val minor:Int,val patch:Int,val pre:String,val preNum:Int)
+  private fun parseVersion(raw:String):V? {
+    val m=Regex("^v?(\\d+)\\.(\\d+)\\.(\\d+)(?:-(beta|rc)\\.(\\d+))?$",RegexOption.IGNORE_CASE)
+      .matchEntire(raw)?:return null
+    return V(m.groupValues[1].toIntOrNull()?:return null,
+      m.groupValues[2].toIntOrNull()?:return null,
+      m.groupValues[3].toIntOrNull()?:return null,
+      m.groupValues[4].lowercase(),m.groupValues[5].toIntOrNull()?:0)
   }
-  private fun newer(a:String,b:String):Boolean {
-    val x=versionParts(a);val y=versionParts(b)
-    for(i in 0..2)if(x[i]!=y[i])return x[i]>y[i]
-    return a.substringAfter("-", "").isEmpty() && b.substringAfter("-","").isNotEmpty()
+  private fun newer(candidate:String,installed:String):Boolean {
+    val a=parseVersion(candidate)?:return false
+    val b=parseVersion(installed)?:return false
+    val ax=listOf(a.major,a.minor,a.patch);val bx=listOf(b.major,b.minor,b.patch)
+    for(i in 0..2)if(ax[i]!=bx[i])return ax[i]>bx[i]
+    fun precedence(s:String)=when(s){"beta"->0;"rc"->1;else->2}
+    val p=precedence(a.pre);val q=precedence(b.pre)
+    return if(p==q)a.preNum>b.preNum else p>q
   }
-  private fun connection(url:String):HttpURLConnection=(URL(url).openConnection() as HttpURLConnection).apply {
-    connectTimeout=9000;readTimeout=12000;instanceFollowRedirects=true
-    setRequestProperty("User-Agent","PT2VHF-Speed-Alert-Android")
-    setRequestProperty("Accept","application/vnd.github+json")
-  }
-  private fun readText(url:String):String {
-    val c=connection(url)
+
+  private fun connect(url:String):HttpURLConnection =
+    (URL(url).openConnection() as HttpURLConnection).apply {
+      connectTimeout=8000
+      readTimeout=15000
+      instanceFollowRedirects=true
+      setRequestProperty("User-Agent","PT2VHF-Speed-Alert-Android")
+      setRequestProperty("Accept","application/json")
+      useCaches=false
+    }
+  private fun fetchText(url:String):String {
+    val conn=connect(url)
     try {
-      if(c.responseCode!=200)throw java.io.IOException("HTTP "+c.responseCode)
-      return c.inputStream.bufferedReader(Charsets.UTF_8).use {it.readText()}
-    } finally { c.disconnect() }
+      if(conn.responseCode!=200)throw IOException("HTTP "+conn.responseCode)
+      return conn.inputStream.bufferedReader(Charsets.UTF_8).use {it.readText()}
+    } finally {conn.disconnect()}
   }
+
   private fun reportOptIn(context:Context,version:String) {
     val p=AppConfig.prefs(context)
     if(!AppConfig.shareStats(p) || !p.getBoolean("statsNoticeAccepted",false))return
@@ -64,188 +85,185 @@ object UpdateManager {
       .put("platform","android")
       .put("event","update_check").toString()
     try {
-      val c=connection(activityUrl)
-      c.requestMethod="POST";c.doOutput=true
-      c.setRequestProperty("Content-Type","application/json")
-      c.outputStream.use {it.write(payload.toByteArray(Charsets.UTF_8))}
-      c.responseCode
-      c.disconnect()
-    } catch(_:Exception) { /* non-blocking opt-in report; never interrupts GPS */ }
+      val conn=connect(activityUrl)
+      try {
+        conn.requestMethod="POST"
+        conn.doOutput=true
+        conn.setRequestProperty("Content-Type","application/json; charset=utf-8")
+        conn.outputStream.use {it.write(payload.toByteArray(Charsets.UTF_8))}
+        conn.responseCode
+      } finally {conn.disconnect()}
+    } catch(_:Exception) {
+      // Never postpone or interrupt speed monitoring due to site availability.
+    }
   }
 
+  /** Parse the site JSON, including SHA-256 and official counted APK link. */
+  private fun latestAvailable():Package? {
+    val doc=JSONObject(fetchText(catalogUrl))
+    if(doc.optInt("schema")!=1 ||
+      doc.optString("product")!="speed" ||
+      doc.optString("source")!="https://www.pt2vhf.com" ||
+      doc.optString("status")!="available")return null
+    val version=doc.optString("version")
+    if(parseVersion(version)==null)return null
+    val files=doc.optJSONArray("files")?:return null
+    for(i in 0 until files.length()) {
+      val file=files.optJSONObject(i)?:continue
+      if(file.optString("kind")!="apk" ||
+         file.optString("platform")!="android")continue
+      val filename=file.optString("name")
+      val expected="PT2VHF-Speed-Alert-v"+version+".apk"
+      if(filename!=expected)continue
+      val url=file.optString("url")
+      val uri=Uri.parse(url)
+      if(uri.scheme!="https" || uri.host!="www.pt2vhf.com" ||
+        uri.path!="/download.php" ||
+        uri.getQueryParameter("product")!="speed" ||
+        uri.getQueryParameter("file")!=filename)continue
+      val sha=file.optString("sha256").lowercase()
+      if(!Regex("^[a-f0-9]{64}$").matches(sha))continue
+      val size=file.optLong("size",0)
+      if(size<100000 || size>100000000)continue
+      return Package(version,doc.optString("notes"),url,sha,size,filename)
+    }
+    return null
+  }
 
-  /** Headless daily check. User interaction remains required for installing an APK. */
+  /** Runs only on WorkManager's network-constrained background worker thread. */
   fun checkPeriodic(context:Context):String? {
-    val p=AppConfig.prefs(context)
-    if(!AppConfig.autoUpdates(p) || !p.getBoolean("statsNoticeAccepted",false))return null
+    val prefs=AppConfig.prefs(context)
+    if(!AppConfig.autoUpdates(prefs) || !prefs.getBoolean("statsNoticeAccepted",false))
+      return null
     val installed=currentVersion(context)
     reportOptIn(context,installed)
-    val releasesJson=JSONArray(readText(releases))
-    var found:String?=null
-    for(i in 0 until releasesJson.length()) {
-      val r=releasesJson.optJSONObject(i)?:continue
-      if(r.optBoolean("draft"))continue
-      val tag=r.optString("tag_name").removePrefix("v")
-      if(!newer(tag,installed))continue
-      val assets=r.optJSONArray("assets")?:continue
-      var hasApk=false
-      for(j in 0 until assets.length()) {
-        if(assets.optJSONObject(j)?.optString("name")?.endsWith(".apk",true)==true) {
-          hasApk=true
-          break
-        }
-      }
-      if(hasApk && (found==null || newer(tag,found)))found=tag
-    }
-    return found
+    val item=latestAvailable()
+    return if(item!=null && newer(item.version,installed))item.version else null
   }
 
   fun check(activity:Activity,silent:Boolean) {
-    val current=currentVersion(activity)
+    val installed=currentVersion(activity)
     Thread {
-      // No device location, speed, radio ID or road names are ever transmitted.
-      reportOptIn(activity,current)
+      reportOptIn(activity.applicationContext,installed)
       try {
-        val list=JSONArray(readText(releases))
-        var winner:JSONObject?=null
-        for(i in 0 until list.length()) {
-          val item=list.optJSONObject(i)?:continue
-          if(item.optBoolean("draft"))continue
-          val ver=item.optString("tag_name").removePrefix("v")
-          if(!newer(ver,current))continue
-          if(winner==null || newer(ver,winner.optString("tag_name").removePrefix("v")))winner=item
-        }
-        val chosen=winner
+        val pkg=latestAvailable()
         activity.runOnUiThread {
           if(activity.isFinishing)return@runOnUiThread
-          if(chosen==null) {
-            if(!silent)AlertDialog.Builder(activity).setTitle("Atualizações")
-              .setMessage("Versão "+current+" instalada. Não há versão mais recente no GitHub Releases.")
+          if(pkg==null || !newer(pkg.version,installed)) {
+            if(!silent)AlertDialog.Builder(activity)
+              .setTitle("Atualizações")
+              .setMessage(if(pkg==null)
+                "Nenhuma versão publicável foi encontrada no site PT2VHF."
+                else "Você está usando a versão mais recente: "+installed)
               .setPositiveButton("OK",null).show()
           } else {
-            val assets=chosen.optJSONArray("assets")
-            var apk:JSONObject?=null
-            if(assets!=null)for(j in 0 until assets.length()) {
-              val a=assets.optJSONObject(j)?:continue
-              if(a.optString("name").lowercase().endsWith(".apk")){apk=a;break}
-            }
-            if(apk==null){
-              if(!silent)Toast.makeText(activity,"Release ainda sem APK instalável",Toast.LENGTH_LONG).show()
-            } else {
-              val appAsset=apk
-              AlertDialog.Builder(activity).setTitle("Nova versão disponível")
-                .setMessage("Versão "+chosen.optString("tag_name")+
-                  "\nDeseja baixar o APK verificado pelo SHA-256 e abrir o instalador do Android?"+
-                  "\n\nO Android exige confirmação e assinatura compatível com a versão instalada.")
-                .setNegativeButton("Agora não",null)
-                .setPositiveButton("Baixar") {_,_-> download(activity,appAsset!!) }
-                .show()
-            }
+            AlertDialog.Builder(activity)
+              .setTitle("Nova versão disponível no PT2VHF")
+              .setMessage("Versão: "+pkg.version+"\n\n"+pkg.notes+
+                "\n\nO arquivo será baixado pelo site e verificado por SHA-256. "+
+                "O Android exigirá confirmação e uma assinatura compatível.")
+              .setNegativeButton("Agora não",null)
+              .setPositiveButton("Baixar") {_,_-> download(activity,pkg)}
+              .show()
           }
         }
       } catch(_:Exception) {
         if(!silent)activity.runOnUiThread {
           if(!activity.isFinishing)Toast.makeText(activity,
-            "Não foi possível consultar atualizações. O GPS continua offline.",
+            "Site de atualização indisponível. Os alarmes offline continuam ativos.",
             Toast.LENGTH_LONG).show()
         }
       }
     }.start()
   }
 
-
-  /**
-   * Prevent opening the installer with a different signing certificate.
-   * Android won't update an existing applicationId using a different signing key.
-   */
+  /** Distinct SHA-256 APK signature check before invoking package installer. */
   @Suppress("DEPRECATION")
   private fun certificateDigest(activity:Activity,apk:File?):String? {
     val pm=activity.packageManager
     val flags=if(Build.VERSION.SDK_INT>=28)
-      android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES
-    else android.content.pm.PackageManager.GET_SIGNATURES
+      PackageManager.GET_SIGNING_CERTIFICATES else PackageManager.GET_SIGNATURES
     val info=try {
       if(apk==null)pm.getPackageInfo(activity.packageName,flags)
       else pm.getPackageArchiveInfo(apk.absolutePath,flags)
-    }catch(_:Exception){null} ?: return null
-    val signs=if(Build.VERSION.SDK_INT>=28) {
-      info.signingInfo?.apkContentsSigners
-    } else info.signatures
-    val data=signs?.firstOrNull()?.toByteArray() ?: return null
-    return MessageDigest.getInstance("SHA-256").digest(data)
+    } catch(_:Exception){null} ?: return null
+    val signatures=if(Build.VERSION.SDK_INT>=28)
+      info.signingInfo?.apkContentsSigners else info.signatures
+    val bytes=signatures?.firstOrNull()?.toByteArray()?:return null
+    return MessageDigest.getInstance("SHA-256").digest(bytes)
       .joinToString(""){"%02x".format(it)}
   }
-  private fun isSigningCompatible(activity:Activity,apk:File):Boolean {
-    val installed=certificateDigest(activity,null)
-    val new=certificateDigest(activity,apk)
-    return installed!=null && new!=null && installed==new
+  private fun compatible(activity:Activity,file:File):Boolean {
+    val old=certificateDigest(activity,null)
+    val target=certificateDigest(activity,file)
+    return old!=null && target!=null && old==target
   }
 
-  private fun download(activity:Activity,asset:JSONObject) {
-    val url=asset.optString("browser_download_url")
-    val sha=asset.optString("digest").removePrefix("sha256:").lowercase()
-    if(!url.startsWith("https://github.com/alexpmr/speed-alert/releases/download/") ||
-        !Regex("^[a-f0-9]{64}$").matches(sha)){
-      Toast.makeText(activity,"Pacote sem checksum válido; download recusado",Toast.LENGTH_LONG).show()
-      return
-    }
-    Toast.makeText(activity,"Baixando atualização em segundo plano...",Toast.LENGTH_LONG).show()
+  private fun download(activity:Activity,pkg:Package) {
+    Toast.makeText(activity,"Baixando APK do site PT2VHF…",Toast.LENGTH_LONG).show()
     Thread {
-      val file=File(File(activity.cacheDir,"updates"),"PT2VHF-Speed-Alert-update.apk")
+      val target=File(File(activity.cacheDir,"updates"),pkg.filename)
       try {
-        file.parentFile?.mkdirs()
-        val c=connection(url)
-        val md=MessageDigest.getInstance("SHA-256")
+        target.parentFile?.mkdirs()
+        val conn=connect(pkg.url)
+        val digest=MessageDigest.getInstance("SHA-256")
+        var received=0L
         try {
-          if(c.responseCode!=200)throw java.io.IOException("APK HTTP "+c.responseCode)
-          c.inputStream.use {input->
-            file.outputStream().use {out->
-              val buffer=ByteArray(8192)
+          if(conn.responseCode!=200)throw IOException("Download HTTP "+conn.responseCode)
+          conn.inputStream.use {input ->
+            target.outputStream().use {output ->
+              val buffer=ByteArray(16384)
               while(true) {
-                val n=input.read(buffer);if(n<0)break
-                out.write(buffer,0,n)
-                md.update(buffer,0,n)
+                val n=input.read(buffer)
+                if(n<0)break
+                received+=n
+                if(received>pkg.size)throw IOException("APK maior que o esperado")
+                output.write(buffer,0,n)
+                digest.update(buffer,0,n)
               }
             }
           }
-        } finally {c.disconnect()}
-        val actual=md.digest().joinToString("") { "%02x".format(it) }
-        if(actual!=sha)throw java.io.IOException("SHA-256 do APK não confere")
-        val sameSignature=isSigningCompatible(activity,file)
+        } finally {conn.disconnect()}
+        if(received!=pkg.size)throw IOException("Tamanho do APK não confere")
+        val actual=digest.digest().joinToString(""){"%02x".format(it)}
+        if(actual!=pkg.sha256)throw IOException("SHA-256 diferente do manifesto")
+        val compatibleSignature=compatible(activity,target)
         activity.runOnUiThread {
           if(activity.isFinishing)return@runOnUiThread
-          if(!sameSignature) {
+          if(!compatibleSignature) {
             AlertDialog.Builder(activity)
-              .setTitle("Atualização bloqueada: assinatura incompatível")
-              .setMessage("O APK tem uma assinatura digital diferente da versão instalada. "+
-                "O Android não permite atualizar por cima. Para migrar, anote suas configurações, "+
-                "desinstale a versão antiga e instale a nova. "+
-                "A desinstalação apaga as preferências locais. "+
-                "As próximas versões deverão usar uma chave permanente de release.")
-              .setPositiveButton("Entendi",null)
-              .show()
-          } else if(Build.VERSION.SDK_INT>=26 && !activity.packageManager.canRequestPackageInstalls()) {
-            AlertDialog.Builder(activity).setTitle("Permitir instalação")
-              .setMessage("Autorize instalação de aplicativos desta fonte nas configurações do Android e depois verifique novamente a atualização.")
-              .setPositiveButton("Abrir configurações") {_,_->
+              .setTitle("Assinatura incompatível")
+              .setMessage("Este APK tem certificado diferente do aplicativo instalado. "+
+                "O Android impede a atualização sem desinstalar a versão antiga. "+
+                "Anote suas configurações antes de desinstalar: os dados locais serão apagados. "+
+                "As versões futuras exigem chave permanente de assinatura.")
+              .setPositiveButton("Entendi",null).show()
+          } else if(Build.VERSION.SDK_INT>=26 &&
+              !activity.packageManager.canRequestPackageInstalls()) {
+            AlertDialog.Builder(activity)
+              .setTitle("Autorização para instalar")
+              .setMessage("Permita a instalação de aplicativos desta fonte e depois "+
+                "execute novamente a atualização.")
+              .setNegativeButton("Cancelar",null)
+              .setPositiveButton("Configurações") {_,_->
                 activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
                   Uri.parse("package:"+activity.packageName)))
-              }.setNegativeButton("Cancelar",null).show()
+              }.show()
           } else {
-            val uri=FileProvider.getUriForFile(activity,
-              activity.packageName+".fileprovider",file)
-            val intent=Intent(Intent.ACTION_VIEW).apply {
-              setDataAndType(uri,"application/vnd.android.package-archive")
-              addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            activity.startActivity(intent)
+            val content=FileProvider.getUriForFile(activity,
+              activity.packageName+".fileprovider",target)
+            activity.startActivity(Intent(Intent.ACTION_VIEW).apply {
+              setDataAndType(content,"application/vnd.android.package-archive")
+              addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            })
           }
         }
       } catch(e:Exception) {
-        file.delete()
+        target.delete()
         activity.runOnUiThread {
           if(!activity.isFinishing)Toast.makeText(activity,
-            "Falha na atualização: "+(e.localizedMessage?:"erro"),Toast.LENGTH_LONG).show()
+            "Falha ao baixar atualização: "+(e.localizedMessage?:"desconhecida"),
+            Toast.LENGTH_LONG).show()
         }
       }
     }.start()
