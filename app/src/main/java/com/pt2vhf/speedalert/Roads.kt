@@ -109,7 +109,9 @@ class Roads(context:Context) {
     val roadName=best.name.ifBlank{"Via não identificada"}
     var radarDistance:Double?=null
     var radarLimit:Double?=null
-    val radius=radarRangeMeters.coerceIn(100.0,1000.0)
+    // Show an upcoming camera farther away than the audible warning threshold.
+    // The service activates the radar alarm only inside the user-selected range.
+    val radius=1500.0
     val offset=(radius+40.0)/111320.0
     val latTiles=(offset*1000).toInt()+2
     val lonTiles=(offset*1000/max(0.4,cos(Math.toRadians(lat)))).toInt()+2

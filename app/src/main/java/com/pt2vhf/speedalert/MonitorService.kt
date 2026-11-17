@@ -90,6 +90,7 @@ class MonitorService:Service() {
     val max=if(AppConfig.manual(prefs)) AppConfig.manualLimit(prefs).toDouble() else selected.limit
     val excess=max!=null && speed>max+AppConfig.tolerance(prefs)
     val radarExcess=selected.radarDistance!=null && selected.radarLimit!=null &&
+      selected.radarDistance<=AppConfig.radarRange(prefs) &&
       speed>selected.radarLimit+AppConfig.tolerance(prefs)
     val message=when {
       radarExcess -> "EXCESSO PRÓXIMO AO RADAR"
