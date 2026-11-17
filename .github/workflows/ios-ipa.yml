@@ -1,0 +1,109 @@
+name: Build signed iOS IPA for registered iPhones
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ad_hoc_ipa:
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+      IOS_DISTRIBUTION_P12_BASE64: ${{ secrets.IOS_DISTRIBUTION_P12_BASE64 }}
+      IOS_DISTRIBUTION_P12_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_P12_PASSWORD }}
+      IOS_ADHOC_PROFILE_BASE64: ${{ secrets.IOS_ADHOC_PROFILE_BASE64 }}
+    steps:
+      - name: Require Apple signing material
+        shell: bash
+        run: |
+          set -euo pipefail
+          for key in IOS_TEAM_ID IOS_DISTRIBUTION_P12_BASE64 IOS_DISTRIBUTION_P12_PASSWORD IOS_ADHOC_PROFILE_BASE64; do
+            if [ -z "$(printenv "$key")" ]; then
+              echo "::error::Missing Apple signing secret: $key. Simulator .app is not an installable IPA."
+              exit 2
+            fi
+          done
+          [[ "$IOS_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]] || exit 3
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: |
+          xcodebuild -version
+          brew install xcodegen
+      - name: Verify and prepare offline OSM database
+        run: bash ios/scripts/prepare_offline.sh
+      - name: Import Apple Distribution certificate and ad hoc profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          KC="$RUNNER_TEMP/pt2vhf-ios-signing.keychain-db"
+          KCPASS="$(openssl rand -base64 36)"
+          security create-keychain -p "$KCPASS" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KCPASS" "$KC"
+          security list-keychains -d user -s "$KC"
+          security default-keychain -d user -s "$KC"
+          printf %s "$IOS_DISTRIBUTION_P12_BASE64" | base64 -D > "$RUNNER_TEMP/distribution.p12"
+          test -s "$RUNNER_TEMP/distribution.p12"
+          security import "$RUNNER_TEMP/distribution.p12" -k "$KC" \
+            -P "$IOS_DISTRIBUTION_P12_PASSWORD" -f pkcs12 -A
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KCPASS" "$KC"
+          security find-identity -v -p codesigning "$KC" | grep 'Apple Distribution'
+          printf %s "$IOS_ADHOC_PROFILE_BASE64" | base64 -D > "$RUNNER_TEMP/adhoc.mobileprovision"
+          test -s "$RUNNER_TEMP/adhoc.mobileprovision"
+          security cms -D -i "$RUNNER_TEMP/adhoc.mobileprovision" > "$RUNNER_TEMP/profile.plist"
+          python3 ios/scripts/verify_profile.py \
+            "$RUNNER_TEMP/profile.plist" "$IOS_TEAM_ID" "com.pt2vhf.speedalert.ios" \
+            "$GITHUB_ENV" "$RUNNER_TEMP/adhoc.mobileprovision"
+      - name: Build and sign archive for registered iPhones
+        shell: bash
+        working-directory: ios
+        run: |
+          set -euo pipefail
+          xcodegen generate --spec project.yml
+          xcodebuild -project PT2VHFSpeedAlert.xcodeproj \
+            -scheme PT2VHFSpeedAlert \
+            -configuration Release -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/PT2VHFSpeedAlert.xcarchive" \
+            DEVELOPMENT_TEAM="$IOS_TEAM_ID" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="$IOS_PROFILE_UUID" \
+            CODE_SIGNING_ALLOWED=YES archive | tee "$RUNNER_TEMP/archive.log" | tail -120
+          test -d "$RUNNER_TEMP/PT2VHFSpeedAlert.xcarchive"
+      - name: Export and validate the signed Ad Hoc IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ios/scripts/export_options.py \
+            "$IOS_TEAM_ID" "$IOS_PROFILE_UUID" "$RUNNER_TEMP/exportOptions.plist"
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/PT2VHFSpeedAlert.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/exportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export" | tail -120
+          test -s "$RUNNER_TEMP/export/PT2VHFSpeedAlert.ipa"
+          mkdir -p dist
+          cp "$RUNNER_TEMP/export/PT2VHFSpeedAlert.ipa" \
+            dist/PT2VHF-Speed-Alert-iOS-v1.0.6-AdHoc.ipa
+          unzip -t dist/*.ipa | tail -2
+          unzip -p dist/*.ipa Payload/PT2VHFSpeedAlert.app/Info.plist > "$RUNNER_TEMP/app-info.plist"
+          plutil -extract CFBundleIdentifier raw -o - "$RUNNER_TEMP/app-info.plist" \
+            | grep '^com.pt2vhf.speedalert.ios$'
+          unzip -p dist/*.ipa Payload/PT2VHFSpeedAlert.app/embedded.mobileprovision \
+            > "$RUNNER_TEMP/app.mobileprovision"
+          security cms -D -i "$RUNNER_TEMP/app.mobileprovision" > "$RUNNER_TEMP/app-profile.plist"
+          python3 ios/scripts/verify_profile.py \
+            "$RUNNER_TEMP/app-profile.plist" "$IOS_TEAM_ID" "com.pt2vhf.speedalert.ios"
+          shasum -a 256 dist/*.ipa > dist/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PT2VHF-Speed-Alert-iOS-v1.0.6-AdHoc-SIGNED
+          path: |
+            dist/PT2VHF-Speed-Alert-iOS-v1.0.6-AdHoc.ipa
+            dist/SHA256SUMS.txt
+          retention-days: 14
+          if-no-files-found: error
+      - name: Clean temporary Apple credentials
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/pt2vhf-ios-signing.keychain-db" || true
+          rm -f "$RUNNER_TEMP/distribution.p12" "$RUNNER_TEMP/adhoc.mobileprovision"
