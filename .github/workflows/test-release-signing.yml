@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/test-release-signing.yml'
+      - 'app/src/main/java/com/pt2vhf/speedalert/MainActivity.kt'
   workflow_dispatch:
 permissions:
   contents: read
