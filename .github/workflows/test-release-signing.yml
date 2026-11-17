@@ -1,0 +1,50 @@
+name: Validate release signing without publishing
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/test-release-signing.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - uses: android-actions/setup-android@v4
+      - run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Restore verified offline OSM v3 data
+        run: |
+          set -euo pipefail
+          curl --fail -L --retry 3 -o /tmp/old.apk \
+            https://github.com/alexpmr/speed-alert/releases/download/v1.0.3-beta.1/PT2VHF-Speed-Alert-v1.0.3-beta.1.apk
+          echo "9fab2b29e90f2d5b95682d257206e4f49a78d33c7e5562a1117c1588fa989b00  /tmp/old.apk" | sha256sum -c -
+          mkdir -p app/src/main/assets
+          unzip -p /tmp/old.apk assets/df_roads_v3.sqlite > app/src/main/assets/df_roads_v3.sqlite
+      - name: Smoke-test release Gradle signing and lint using ephemeral QA key
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PT2VHF_SIGNING_STORE_FILE="$RUNNER_TEMP/throwaway-QA-not-for-users.jks"
+          export ANDROID_KEYSTORE_PASSWORD="$(openssl rand -base64 30)"
+          export ANDROID_KEY_PASSWORD="$ANDROID_KEYSTORE_PASSWORD"
+          export ANDROID_KEY_ALIAS="speedalert"
+          keytool -genkeypair -noprompt \
+            -keystore "$PT2VHF_SIGNING_STORE_FILE" \
+            -storetype PKCS12 -alias speedalert -keyalg RSA -keysize 2048 \
+            -validity 1 -dname "CN=CI QA Not For Distribution, O=PT2VHF, C=BR" \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" -keypass "$ANDROID_KEY_PASSWORD"
+          gradle :app:assembleRelease :app:lintRelease --no-daemon --stacktrace
+          test -s app/build/outputs/apk/release/app-release.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose \
+            app/build/outputs/apk/release/app-release.apk
+          echo "Release signing and lint QA succeeded. APK purposely not uploaded or published."
