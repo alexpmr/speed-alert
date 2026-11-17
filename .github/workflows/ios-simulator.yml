@@ -1,0 +1,57 @@
+name: Validate PT2VHF Speed Alert iOS Simulator
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios-simulator.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show Xcode toolchain
+        run: xcodebuild -version
+      - name: Install XcodeGen
+        run: |
+          brew install xcodegen
+          xcodegen --version
+      - name: Validate offline SQLite asset
+        run: bash ios/scripts/prepare_offline.sh
+      - name: Generate Xcode project
+        working-directory: ios
+        run: |
+          xcodegen generate --spec project.yml
+          test -d PT2VHFSpeedAlert.xcodeproj
+      - name: Build for iPhone Simulator
+        working-directory: ios
+        run: |
+          set -euo pipefail
+          xcodebuild -project PT2VHFSpeedAlert.xcodeproj \
+            -scheme PT2VHFSpeedAlert \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath ./DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            build | tee "$RUNNER_TEMP/ios-build.log" | tail -120
+      - name: Verify iOS simulator app bundle
+        working-directory: ios
+        run: |
+          set -euo pipefail
+          APP="DerivedData/Build/Products/Debug-iphonesimulator/PT2VHFSpeedAlert.app"
+          test -d "$APP"
+          test -s "$APP/df_roads_v3.sqlite"
+          /usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP/Info.plist" | grep '^1.0.6$'
+          /usr/libexec/PlistBuddy -c 'Print UIBackgroundModes' "$APP/Info.plist"
+          ditto -c -k --keepParent "$APP" PT2VHF-Speed-Alert-iOS-Simulator-1.0.6.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PT2VHF-Speed-Alert-iOS-1.0.6-Simulator
+          path: ios/PT2VHF-Speed-Alert-iOS-Simulator-1.0.6.zip
+          if-no-files-found: error
+          retention-days: 15

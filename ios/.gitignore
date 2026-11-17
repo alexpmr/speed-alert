@@ -1,0 +1,9 @@
+*.xcodeproj/
+build/
+DerivedData/
+SpeedAlertIOS/Offline/*.sqlite
+*.ipa
+*.xcarchive
+*.mobileprovision
+*.p12
+*.p8
