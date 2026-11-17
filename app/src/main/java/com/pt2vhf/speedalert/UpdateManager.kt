@@ -125,6 +125,34 @@ object UpdateManager {
     }.start()
   }
 
+
+  /**
+   * Prevent opening the installer with a different signing certificate.
+   * Android won't update an existing applicationId using a different signing key.
+   */
+  @Suppress("DEPRECATION")
+  private fun certificateDigest(activity:Activity,apk:File?):String? {
+    val pm=activity.packageManager
+    val flags=if(Build.VERSION.SDK_INT>=28)
+      android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES
+    else android.content.pm.PackageManager.GET_SIGNATURES
+    val info=try {
+      if(apk==null)pm.getPackageInfo(activity.packageName,flags)
+      else pm.getPackageArchiveInfo(apk.absolutePath,flags)
+    }catch(_:Exception){null} ?: return null
+    val signs=if(Build.VERSION.SDK_INT>=28) {
+      info.signingInfo?.apkContentsSigners
+    } else info.signatures
+    val data=signs?.firstOrNull()?.toByteArray() ?: return null
+    return MessageDigest.getInstance("SHA-256").digest(data)
+      .joinToString(""){"%02x".format(it)}
+  }
+  private fun isSigningCompatible(activity:Activity,apk:File):Boolean {
+    val installed=certificateDigest(activity,null)
+    val new=certificateDigest(activity,apk)
+    return installed!=null && new!=null && installed==new
+  }
+
   private fun download(activity:Activity,asset:JSONObject) {
     val url=asset.optString("browser_download_url")
     val sha=asset.optString("digest").removePrefix("sha256:").lowercase()
@@ -155,9 +183,20 @@ object UpdateManager {
         } finally {c.disconnect()}
         val actual=md.digest().joinToString("") { "%02x".format(it) }
         if(actual!=sha)throw java.io.IOException("SHA-256 do APK não confere")
+        val sameSignature=isSigningCompatible(activity,file)
         activity.runOnUiThread {
           if(activity.isFinishing)return@runOnUiThread
-          if(Build.VERSION.SDK_INT>=26 && !activity.packageManager.canRequestPackageInstalls()) {
+          if(!sameSignature) {
+            AlertDialog.Builder(activity)
+              .setTitle("Atualização bloqueada: assinatura incompatível")
+              .setMessage("O APK tem uma assinatura digital diferente da versão instalada. "+
+                "O Android não permite atualizar por cima. Para migrar, anote suas configurações, "+
+                "desinstale a versão antiga e instale a nova. "+
+                "A desinstalação apaga as preferências locais. "+
+                "As próximas versões deverão usar uma chave permanente de release.")
+              .setPositiveButton("Entendi",null)
+              .show()
+          } else if(Build.VERSION.SDK_INT>=26 && !activity.packageManager.canRequestPackageInstalls()) {
             AlertDialog.Builder(activity).setTitle("Permitir instalação")
               .setMessage("Autorize instalação de aplicativos desta fonte nas configurações do Android e depois verifique novamente a atualização.")
               .setPositiveButton("Abrir configurações") {_,_->
