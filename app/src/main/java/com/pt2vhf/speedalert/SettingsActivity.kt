@@ -1,6 +1,7 @@
 package com.pt2vhf.speedalert
 
 import android.app.Activity
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.text.InputType
@@ -14,6 +15,8 @@ class SettingsActivity : Activity() {
   private lateinit var beepMs: EditText
   private lateinit var pauseMs: EditText
   private val navy = Color.rgb(12,20,29)
+  private val exportRequest=7031
+  private val importRequest=7032
   private val white = Color.WHITE
   private val green = Color.rgb(94,214,156)
 
@@ -111,6 +114,30 @@ class SettingsActivity : Activity() {
     })
     toggle(root,"Participar das estatísticas anônimas de instalações no site","shareStats",true)
     add(root,label("Quando habilitado, a consulta envia um identificador aleatório persistente e a versão. A atividade é pseudônima, não plenamente anônima. Não são enviados GPS, trajeto nem velocidade. O país pode ser estimado pelo servidor. Você pode desativar a opção.",12f,Color.LTGRAY))
+    add(root,label("MIGRAÇÃO E CÓPIA DE SEGURANÇA",18f,green))
+    add(root,label("Antes de desinstalar uma beta antiga, exporte as configurações. Na nova versão assinada, importe esse arquivo. Por segurança, o identificador das estatísticas e permissões não são exportados.",12f,Color.LTGRAY))
+    add(root,Button(this).apply {
+      text="EXPORTAR CONFIGURAÇÕES"
+      setOnClickListener {
+        save()
+        val intent=Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+          addCategory(Intent.CATEGORY_OPENABLE)
+          type="application/json"
+          putExtra(Intent.EXTRA_TITLE,"PT2VHF-SpeedAlert-settings.json")
+        }
+        startActivityForResult(intent,exportRequest)
+      }
+    })
+    add(root,Button(this).apply {
+      text="IMPORTAR CONFIGURAÇÕES"
+      setOnClickListener {
+        val intent=Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+          addCategory(Intent.CATEGORY_OPENABLE)
+          type="application/json"
+        }
+        startActivityForResult(intent,importRequest)
+      }
+    })
     add(root,label("Alterações aplicadas automaticamente às próximas leituras de GPS. Sem Internet, o monitoramento e os alarmes continuam funcionando.",12f,Color.LTGRAY))
     add(root,Button(this).apply { text="SALVAR E VOLTAR";setOnClickListener { save();finish() } })
     setContentView(scroll)
@@ -121,6 +148,35 @@ class SettingsActivity : Activity() {
     p.edit().putInt("manualLimit",value(manualLimit,AppConfig.manualLimit(p),10,160))
       .putInt("beepMs",value(beepMs,AppConfig.beepMs(p),100,1000))
       .putInt("pauseMs",value(pauseMs,AppConfig.pauseMs(p),100,2000)).apply()
+  }
+  @Deprecated("Activity result API used for compatibility with Android 8+")
+  override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?) {
+    super.onActivityResult(requestCode,resultCode,data)
+    if(resultCode!=RESULT_OK || data?.data==null)return
+    try {
+      val uri=data.data!!
+      if(requestCode==exportRequest) {
+        contentResolver.openOutputStream(uri,"wt")?.use { output ->
+          output.write(SettingsBackup.export(p).toByteArray(Charsets.UTF_8))
+        } ?: error("Não foi possível abrir arquivo de saída")
+        Toast.makeText(this,"Configurações exportadas",Toast.LENGTH_LONG).show()
+      } else if(requestCode==importRequest) {
+        val text=contentResolver.openInputStream(uri)?.use {
+          val bytes=it.readBytes()
+          require(bytes.size<=16384){"Arquivo muito grande"}
+          String(bytes,Charsets.UTF_8)
+        } ?: error("Não foi possível ler o arquivo")
+        val count=SettingsBackup.import(p,text)
+        manualLimit.setText(AppConfig.manualLimit(p).toString())
+        beepMs.setText(AppConfig.beepMs(p).toString())
+        pauseMs.setText(AppConfig.pauseMs(p).toString())
+        UpdateScheduler.sync(this)
+        Toast.makeText(this,"$count ajustes importados; reabra Configurações.",Toast.LENGTH_LONG).show()
+        finish()
+      }
+    } catch(e:Exception) {
+      Toast.makeText(this,e.localizedMessage?:"Falha no arquivo",Toast.LENGTH_LONG).show()
+    }
   }
   override fun onPause() {save();super.onPause()}
 }
