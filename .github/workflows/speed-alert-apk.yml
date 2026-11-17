@@ -54,7 +54,7 @@ jobs:
           print("OFFLINE_V3_OK",counts,"named segments",named)
           db.close()
           PY
-      - name: Build Android v1.0.3 beta
+      - name: Build Android v1.0.4 beta
         run: gradle :app:assembleDebug --no-daemon --stacktrace
       - name: Validate APK and offline database
         run: |
@@ -63,7 +63,7 @@ jobs:
           unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -E 'classes.dex|assets/df_roads_v3.sqlite|ic_speed_alert'
       - uses: actions/upload-artifact@v4
         with:
-          name: PT2VHF-Speed-Alert-1.0.3-beta1-APK
+          name: PT2VHF-Speed-Alert-1.0.4-beta1-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30

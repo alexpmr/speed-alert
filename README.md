@@ -1,4 +1,4 @@
-# PT2VHF Speed Alert v1.0.3-beta.1
+# PT2VHF Speed Alert v1.0.4-beta.1
 
 Aplicativo Android independente (8.0+) com velocidade GNSS e limites offline OSM no DF e entorno.
 
@@ -20,3 +20,12 @@ JDK 17, Gradle 8.10.2, SDK 35, Python 3 e osmium. O Actions baixa o extrato Cent
 Beta ainda sem teste em dispositivo/carro. Bases OSM podem ser incompletas; falsos negativos/positivos de limite ou radar são possíveis, sobretudo em vias paralelas. A sinalização oficial prevalece. Uma assinatura debug variável entre builds pode exigir desinstalar a versão anterior; a assinatura de produção deve ser persistente antes de considerar o OTA transparente. Android Auto e Android Automotive não equivalem a APK instalado numa central Android comum.
 
 © OpenStreetMap contributors, ODbL 1.0. https://www.openstreetmap.org/copyright
+
+
+## Atualizações de interface e áudio da 1.0.4 beta
+- Layout da tela principal refeito a partir do mockup entregue pelo usuário: logo PT2VHF, engrenagem, placa circular, cartão de velocidade, rua, radar/limite/GPS e botão Silenciar. O app alterna entre verde (menos de 95% do limite), amarelo (95% até o limite) e vermelho piscando (acima do limite).
+- Novo motor AudioTrack em serviço de localização foreground com seis sons: simples, duplo, triplo, sirene, suave e tom contínuo (prioridade para radar).
+- Manter tela ligada ativado por padrão nas instalações novas. O GPS/alarme continua com Waze ou Google Maps visíveis, enquanto o serviço estiver ativo; a arbitragem de áudio do Android/central pode variar.
+- OTA consulta exclusivamente o manifesto do site `https://www.pt2vhf.com/update.php?product=speed&platform=android&kind=apk`. Baixa pelo link oficial com verificação de SHA-256 e checagem da assinatura Android.
+- **Publicação automática de APK debug suspensa** porque certificados variáveis causam conflito com apps já instalados. V1.0.4 será somente artefato interno de CI até definir assinatura estável.
+- Layout/capacidade de áudio dependem de homologação prática em celulares e centrais multimídia.

@@ -6,8 +6,8 @@ android {
         applicationId="com.pt2vhf.speedalert"
         minSdk=26
         targetSdk=34
-        versionCode=4
-        versionName="1.0.3-beta.1"
+        versionCode=5
+        versionName="1.0.4-beta.1"
     }
     compileOptions {
         sourceCompatibility=JavaVersion.VERSION_17
