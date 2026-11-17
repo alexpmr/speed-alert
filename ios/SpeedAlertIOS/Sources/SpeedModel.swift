@@ -17,6 +17,7 @@ final class SpeedModel:NSObject,ObservableObject,CLLocationManagerDelegate {
     @Published var status="Monitoramento parado"
     @Published var alerting=false
     @Published var cameraAlert=false
+    @Published var updateStatus="Versões iOS ainda não consultadas"
 
     private let manager=CLLocationManager()
     private let offline=OfflineRoads()
@@ -50,6 +51,7 @@ final class SpeedModel:NSObject,ObservableObject,CLLocationManagerDelegate {
             monitoring=false
         }
         UIApplication.shared.isIdleTimerDisabled=preferences.keepAwake
+        if preferences.periodicChecks { checkUpdates(onlyIfDue:true) }
         timer?.invalidate()
         timer=Timer.scheduledTimer(withTimeInterval:2,repeats:true) { [weak self] _ in
             self?.invalidateStaleFix()
@@ -74,6 +76,20 @@ final class SpeedModel:NSObject,ObservableObject,CLLocationManagerDelegate {
         alarms.stop()
         status="Monitoramento parado"
         UIApplication.shared.isIdleTimerDisabled=false
+    }
+    func checkUpdates(onlyIfDue:Bool=false) {
+        let defaults=UserDefaults.standard
+        let now=Date().timeIntervalSince1970
+        if onlyIfDue && now-defaults.double(forKey:"iosLastUpdateCheck") < 86400 {
+            return
+        }
+        defaults.set(now,forKey:"iosLastUpdateCheck")
+        updateStatus="Consultando o site PT2VHF..."
+        let share=preferences.statistics
+        Task { [weak self] in
+            let message=await IOSUpdateClient.query(shareStatistics:share)
+            await MainActor.run {self?.updateStatus=message}
+        }
     }
     func toggleMute() {
         preferences.mute.toggle()

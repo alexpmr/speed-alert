@@ -60,6 +60,12 @@ struct SettingsScreen:View {
                        isOn:$prefs.statistics)
                 Text("O identificador da instalação é pseudônimo. Não são transmitidos velocidade ou trajeto. O país pode ser estimado pelo servidor.")
                     .font(.footnote)
+                Button("Verificar atualizações iOS agora") {
+                    model.checkUpdates()
+                }
+                Text(model.updateStatus)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
                 Button("Consultar projeto e futuras versões iOS") {
                     openURL(URL(string:"https://www.pt2vhf.com/speed")!)
                 }
