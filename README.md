@@ -1,4 +1,4 @@
-# PT2VHF Speed Alert v1.0.5
+# PT2VHF Speed Alert v1.0.6
 
 Aplicativo Android independente (8.0+) com velocidade GNSS e limites offline OSM no DF e entorno.
 
@@ -31,8 +31,13 @@ Beta ainda sem teste em dispositivo/carro. Bases OSM podem ser incompletas; fals
 - Layout/capacidade de áudio dependem de homologação prática em celulares e centrais multimídia.
 
 ## Linha estável 1.0.5
-Versão 1.0 (patch 5) escolhida por ser posterior às betas 1.0.3 e 1.0.4, mantendo compatibilidade com a comparação semântica do OTA. O versionCode é 105.
+Versão 1.0 (patch 5) escolhida por ser posterior às betas 1.0.3 e 1.0.4, mantendo compatibilidade com a comparação semântica do OTA. O versionCode é 106.
 
 **Requisito de publicação:** assinatura Android permanente armazenada nos secrets do GitHub Actions (`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`). O APK debug de CI é **somente para QA**, nunca para instalação estável/OTA. Se secrets estiverem ausentes, a publicação deve falhar explicitamente.
 
 O novo APK com certificado de release também será incompatível com as betas históricas assinadas por chaves debug variáveis: haverá uma migração única por desinstalação, depois da qual a mesma chave deverá ser reutilizada em todas as atualizações.
+
+## 1.0.6 — Android e iOS
+- Android: cópia de segurança das configurações em JSON por meio do seletor de arquivos do sistema, para recuperar preferências após migração única da beta com assinatura de depuração incompatível.
+- Android: assinatura de release permanente continua obrigatória para atualizar as próximas versões sem desinstalar.
+- iOS: implementação SwiftUI independente, com monitoramento GPS, base offline v3, radar e áudio em segundo plano. Código em ios/; compilação para simulador em Actions. IPA para iPhone exige credenciais Apple e TestFlight/App Store ou distribuição autorizada.

@@ -19,7 +19,7 @@ jobs:
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
       ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-      RELEASE_VERSION: "1.0.5"
+      RELEASE_VERSION: "1.0.6"
       OSM_SOURCE_SHA256: "9fab2b29e90f2d5b95682d257206e4f49a78d33c7e5562a1117c1588fa989b00"
     steps:
       - uses: actions/checkout@v4
