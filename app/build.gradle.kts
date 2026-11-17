@@ -15,4 +15,7 @@ android {
     }
     kotlinOptions { jvmTarget="17" }
 }
-dependencies { implementation("androidx.core:core:1.15.0") }
+dependencies {
+    implementation("androidx.core:core:1.15.0")
+    implementation("androidx.work:work-runtime-ktx:2.11.2")
+}

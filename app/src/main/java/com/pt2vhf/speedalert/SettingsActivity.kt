@@ -97,9 +97,16 @@ class SettingsActivity : Activity() {
     beepMs=edit(root,"Duração dos bipes (100–1000 ms)",AppConfig.beepMs(p))
     pauseMs=edit(root,"Intervalo entre bipes (100–2000 ms)",AppConfig.pauseMs(p))
     add(root,label("ATUALIZAÇÕES E PRIVACIDADE",18f,green))
-    toggle(root,"Verificar novas versões pelo GitHub quando houver Internet","autoUpdates",true)
-    toggle(root,"Participar das estatísticas anônimas de instalações no site","shareStats",false)
-    add(root,label("Ao participar, cada consulta de versão envia apenas um UUID aleatório e a versão; nenhum dado de GPS, trajeto ou velocidade. O país é estimado pelo servidor quando disponível.",12f,Color.LTGRAY))
+    toggle(root,"Verificar novas atualizações periodicamente","autoUpdates",true) {
+      UpdateScheduler.sync(this)
+    }
+    add(root,label("Verificação diária quando houver Internet. O Android pode adiar a execução para poupar bateria.",12f,Color.LTGRAY))
+    add(root,Button(this).apply {
+      text="VERIFICAR ATUALIZAÇÃO AGORA"
+      setOnClickListener { UpdateManager.check(this@SettingsActivity,false) }
+    })
+    toggle(root,"Participar das estatísticas anônimas de instalações no site","shareStats",true)
+    add(root,label("Quando habilitado, a consulta envia um identificador aleatório persistente e a versão. A atividade é pseudônima, não plenamente anônima. Não são enviados GPS, trajeto nem velocidade. O país pode ser estimado pelo servidor. Você pode desativar a opção.",12f,Color.LTGRAY))
     add(root,label("Alterações aplicadas automaticamente às próximas leituras de GPS. Sem Internet, o monitoramento e os alarmes continuam funcionando.",12f,Color.LTGRAY))
     add(root,Button(this).apply { text="SALVAR E VOLTAR";setOnClickListener { save();finish() } })
     setContentView(scroll)

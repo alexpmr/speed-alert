@@ -15,6 +15,11 @@ object StartupDisclaimer {
       "O aplicativo e seus desenvolvedores não assumem responsabilidade por multas, "+
       "acidentes, perdas ou danos decorrentes de seu uso ou de informações imprecisas, "+
       "observados os limites da legislação aplicável.\n\n"+
+      "Nas configurações, a verificação de atualizações e as estatísticas de instalações "+
+      "ficam ativadas por padrão. Ao selecionar CONTINUAR, você concorda que "+
+      "as consultas enviem um UUID aleatório persistente e a versão instalada; "+
+      "não enviamos GPS, velocidade ou trajetos. O país poderá ser estimado "+
+      "pelo servidor. As duas opções podem ser desativadas em Configurações.\n\n"+
       "A sinalização oficial e as normas de trânsito prevalecem sempre. "+
       "Mantenha a atenção na direção; não manuseie o celular enquanto dirige.\n\n"+
       "Deseja continuar?"

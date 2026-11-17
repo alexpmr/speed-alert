@@ -3,6 +3,7 @@ package com.pt2vhf.speedalert
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
+import android.content.Context
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -25,8 +26,8 @@ object UpdateManager {
   private const val releases="https://api.github.com/repos/alexpmr/speed-alert/releases?per_page=10"
   private const val activityUrl="https://www.pt2vhf.com/speed_activity.php"
 
-  private fun currentVersion(activity:Activity):String=try {
-    activity.packageManager.getPackageInfo(activity.packageName,0).versionName ?: "0.0.0"
+  private fun currentVersion(context:Context):String=try {
+    context.packageManager.getPackageInfo(context.packageName,0).versionName ?: "0.0.0"
   }catch(_:Exception){"0.0.0"}
 
   private fun versionParts(s:String):List<Int> {
@@ -50,9 +51,9 @@ object UpdateManager {
       return c.inputStream.bufferedReader(Charsets.UTF_8).use {it.readText()}
     } finally { c.disconnect() }
   }
-  private fun reportOptIn(activity:Activity,version:String) {
-    val p=AppConfig.prefs(activity)
-    if(!AppConfig.shareStats(p))return
+  private fun reportOptIn(context:Context,version:String) {
+    val p=AppConfig.prefs(context)
+    if(!AppConfig.shareStats(p) || !p.getBoolean("statsNoticeAccepted",false))return
     val id=p.getString("installUuid",null) ?: UUID.randomUUID().toString().also {
       p.edit().putString("installUuid",it).apply()
     }
@@ -70,6 +71,33 @@ object UpdateManager {
       c.responseCode
       c.disconnect()
     } catch(_:Exception) { /* non-blocking opt-in report; never interrupts GPS */ }
+  }
+
+
+  /** Headless daily check. User interaction remains required for installing an APK. */
+  fun checkPeriodic(context:Context):String? {
+    val p=AppConfig.prefs(context)
+    if(!AppConfig.autoUpdates(p) || !p.getBoolean("statsNoticeAccepted",false))return null
+    val installed=currentVersion(context)
+    reportOptIn(context,installed)
+    val releasesJson=JSONArray(readText(releases))
+    var found:String?=null
+    for(i in 0 until releasesJson.length()) {
+      val r=releasesJson.optJSONObject(i)?:continue
+      if(r.optBoolean("draft"))continue
+      val tag=r.optString("tag_name").removePrefix("v")
+      if(!newer(tag,installed))continue
+      val assets=r.optJSONArray("assets")?:continue
+      var hasApk=false
+      for(j in 0 until assets.length()) {
+        if(assets.optJSONObject(j)?.optString("name")?.endsWith(".apk",true)==true) {
+          hasApk=true
+          break
+        }
+      }
+      if(hasApk && (found==null || newer(tag,found)))found=tag
+    }
+    return found
   }
 
   fun check(activity:Activity,silent:Boolean) {

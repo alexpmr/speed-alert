@@ -110,7 +110,17 @@ class MainActivity:Activity() {
     }
     header.addView(appName,LinearLayout.LayoutParams(0,dp(46),1f))
     val version=try {packageManager.getPackageInfo(packageName,0).versionName ?: "-"}catch(_:Exception){"-"}
-    header.addView(label("v"+version,12f,Color.rgb(151,184,207)),LinearLayout.LayoutParams(-2,dp(46)))
+    header.addView(label("v"+version,11f,Color.rgb(151,184,207)),LinearLayout.LayoutParams(-2,dp(46)))
+    val gear=ImageButton(this).apply {
+      setImageResource(R.drawable.ic_settings_24)
+      contentDescription="Abrir configurações"
+      tooltipText="Configurações"
+      scaleType=ImageView.ScaleType.CENTER_INSIDE
+      setPadding(dp(12),dp(12),dp(12),dp(12))
+      background=bg(Color.rgb(39,64,84),12)
+      setOnClickListener { startActivity(Intent(this@MainActivity,SettingsActivity::class.java)) }
+    }
+    header.addView(gear,LinearLayout.LayoutParams(dp(48),dp(48)).apply {setMargins(dp(12),0,0,0)})
     add(root,header,0)
     add(root,label("●  MONITORAMENTO GPS ATIVO",13f,Color.rgb(77,228,154),true),0)
 
@@ -180,27 +190,14 @@ class MainActivity:Activity() {
       startService(Intent(this,MonitorService::class.java).setAction(MonitorService.MUTE))
     }
     add(root,mute,8)
-    val actions=LinearLayout(this).apply {orientation=LinearLayout.HORIZONTAL}
-    val settings=standardButton("CONFIGURAÇÕES").apply {
-      setOnClickListener {startActivity(Intent(this@MainActivity,SettingsActivity::class.java))}
-    }
-    val update=standardButton("VERIFICAR ATUALIZAÇÃO").apply {
-      setOnClickListener { UpdateManager.check(this@MainActivity,false) }
-    }
-    actions.addView(settings,LinearLayout.LayoutParams(0,dp(52),1f).apply {
-      setMargins(0,0,dp(5),0)
-    })
-    actions.addView(update,LinearLayout.LayoutParams(0,dp(52),1f).apply {
-      setMargins(dp(5),0,0,0)
-    })
-    add(root,actions,2)
     add(root,label("© OpenStreetMap contributors • Sem Internet durante o trajeto • Respeite a sinalização.",11f,Color.rgb(145,166,184)),16)
     setContentView(scroll)
     setMuteLabel(AppConfig.muted(prefs))
     // The launch disclaimer must be accepted before GPS and OTA checks.
     StartupDisclaimer.show(this) {
+      prefs.edit().putBoolean("statsNoticeAccepted",true).apply()
       startMonitor()
-      if(AppConfig.autoUpdates(prefs))UpdateManager.check(this,true)
+      UpdateScheduler.sync(this)
     }
   }
   private fun setMuteLabel(muted:Boolean) {
