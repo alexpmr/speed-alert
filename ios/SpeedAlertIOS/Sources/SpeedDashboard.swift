@@ -163,7 +163,8 @@ struct SpeedDashboard:View {
         }
         .padding(.vertical,12)
         .background(RoundedRectangle(cornerRadius:20)
-            .fill(Look.panel.gradient)
+            .fill(Look.panel.gradient))
+        .overlay(RoundedRectangle(cornerRadius:20)
             .stroke(.gray.opacity(0.18),lineWidth:1))
     }
     private var muteButton:some View {
@@ -174,7 +175,8 @@ struct SpeedDashboard:View {
                 .frame(maxWidth:300,minHeight:54)
                 .foregroundStyle(.white)
                 .background(Capsule()
-                    .fill(Color(red:0.15,green:0.25,blue:0.32).gradient)
+                    .fill(Color(red:0.15,green:0.25,blue:0.32).gradient))
+                .overlay(Capsule()
                     .stroke(.gray.opacity(0.5),lineWidth:1))
         }.buttonStyle(.plain)
     }
