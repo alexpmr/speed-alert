@@ -7,11 +7,6 @@ enum IOSUpdateClient {
     private static let activity="https://www.pt2vhf.com/speed_activity.php"
     private static let installedVersion="1.0.6"
 
-    static func check(shareStatistics:Bool)->String {
-        // This synchronous entry is intentionally not used by the main thread.
-        return "Consulta pendente"
-    }
-
     static func query(shareStatistics:Bool) async -> String {
         if shareStatistics {
             await sendOptionalActivity()
@@ -20,7 +15,7 @@ enum IOSUpdateClient {
         do {
             var req=URLRequest(url:url)
             req.timeoutInterval=12
-            req.setValue("PT2VHF-Speed-Alert-iOS","forHTTPHeaderField":"User-Agent")
+            req.setValue("PT2VHF-Speed-Alert-iOS",forHTTPHeaderField:"User-Agent")
             let (data,response)=try await URLSession.shared.data(for:req)
             guard let status=response as? HTTPURLResponse else {
                 return "Site de atualização indisponível"
