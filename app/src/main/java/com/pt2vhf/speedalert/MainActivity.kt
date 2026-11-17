@@ -391,12 +391,9 @@ class MainActivity:Activity() {
     override fun onStart() {
         super.onStart()
         val f=IntentFilter(MonitorService.UPDATE)
-        if(Build.VERSION.SDK_INT>=33)
-            registerReceiver(receiver,f,Context.RECEIVER_NOT_EXPORTED)
-        else {
-            @Suppress("DEPRECATION")
-            registerReceiver(receiver,f)
-        }
+        androidx.core.content.ContextCompat.registerReceiver(
+            this,receiver,f,androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
+        )
         MonitorService.latest?.let {
             show(it.speed,it.limit,it.status,it.source,it.roadName,
                 it.radarMeters?:-1.0,it.radarActive,it.muted,it.gpsAccuracy)
