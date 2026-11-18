@@ -245,8 +245,6 @@ class MainActivity:Activity() {
     }
     override fun onCreate(savedInstanceState:Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor=bg
-        window.navigationBarColor=bg
         val landscape=resources.configuration.orientation==Configuration.ORIENTATION_LANDSCAPE
         val scroll=ScrollView(this).apply {
             isFillViewport=true
@@ -289,6 +287,7 @@ class MainActivity:Activity() {
             add(content,row,-2,10)
         }
         setContentView(scroll)
+        EdgeToEdge.apply(this,scroll)
         setMuted(AppConfig.muted(p))
         StartupDisclaimer.show(this) {
             p.edit().putBoolean("statsNoticeAccepted",true).apply()

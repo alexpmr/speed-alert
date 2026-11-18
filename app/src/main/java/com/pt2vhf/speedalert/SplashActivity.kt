@@ -24,8 +24,6 @@ class SplashActivity : Activity() {
   override fun onCreate(state:Bundle?) {
     super.onCreate(state)
     val navy=Color.rgb(12,20,29)
-    window.statusBarColor=navy
-    window.navigationBarColor=navy
     val root=LinearLayout(this).apply {
       orientation=LinearLayout.VERTICAL
       gravity=Gravity.CENTER
@@ -57,6 +55,7 @@ class SplashActivity : Activity() {
       setPadding(0,dp(35),0,0)
     })
     setContentView(root)
+    EdgeToEdge.apply(this,root)
     handler.postDelayed(open,1000)
   }
   override fun onDestroy() { handler.removeCallbacks(open);super.onDestroy() }

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Site/GitHub distribution only: OTA updater and install-time stats. Never merged into the Play flavor. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <uses-permission android:name="android.permission.INTERNET"/>
+  <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+  <application>
+    <provider android:name="androidx.core.content.FileProvider"
+      android:authorities="com.pt2vhf.speedalert.fileprovider"
+      android:exported="false" android:grantUriPermissions="true">
+      <meta-data android:name="android.support.FILE_PROVIDER_PATHS"
+        android:resource="@xml/file_paths"/>
+    </provider>
+  </application>
+</manifest>

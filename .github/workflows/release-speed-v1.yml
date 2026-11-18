@@ -1,9 +1,6 @@
 name: Publish PT2VHF Speed Alert stable 1.0
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/release-speed-v1.yml'
+  # Manual only: a stable signed release must never be published as a side effect of a merge.
   workflow_dispatch:
 permissions:
   contents: write
@@ -29,7 +26,7 @@ jobs:
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.10.2'
+          gradle-version: '8.14.3'
       - uses: android-actions/setup-android@v4
       - name: Verify permanent signing secrets are configured
         shell: bash
@@ -54,8 +51,8 @@ jobs:
             -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" > /dev/null
           echo "PT2VHF_SIGNING_STORE_FILE=$PT2VHF_SIGNING_STORE_FILE" >> "$GITHUB_ENV"
           unset ANDROID_KEYSTORE_BASE64
-      - name: Install Android SDK 35
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Install Android SDK 36
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
       - name: Restore SHA-256-verified regional offline database
         shell: bash
         run: |
@@ -82,17 +79,17 @@ jobs:
       - name: Compile, lint and assemble signed release
         run: |
           set -euo pipefail
-          gradle :app:assembleRelease :app:lintRelease --no-daemon --stacktrace
+          gradle :app:assembleGithubRelease :app:lintGithubRelease --no-daemon --stacktrace
       - name: Validate signed APK, certificate and release version
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p dist
-          src=app/build/outputs/apk/release/app-release.apk
+          src=app/build/outputs/apk/github/release/app-github-release.apk
           test -s "$src"
-          aapt="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          aapt="$ANDROID_HOME/build-tools/36.0.0/aapt"
           "$aapt" dump badging "$src" | grep "versionName='$RELEASE_VERSION'"
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$src"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$src"
           unzip -l "$src" | grep assets/df_roads_v3.sqlite
           cp "$src" "dist/PT2VHF-Speed-Alert-v$RELEASE_VERSION.apk"
           (cd dist && sha256sum *.apk > SHA256SUMS.txt)

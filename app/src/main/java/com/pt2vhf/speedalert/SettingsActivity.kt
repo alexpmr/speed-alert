@@ -66,7 +66,6 @@ class SettingsActivity : Activity() {
   }
   override fun onCreate(savedInstanceState:Bundle?) {
     super.onCreate(savedInstanceState)
-    window.statusBarColor=navy;window.navigationBarColor=navy
     val scroll=ScrollView(this).apply { setBackgroundColor(navy) }
     val root=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(24,16,24,24) }
     scroll.addView(root)
@@ -104,18 +103,22 @@ class SettingsActivity : Activity() {
     add(root,label("ALARMES EM SEGUNDO PLANO",18f,green))
     add(root,label("O serviço de localização mantém os alertas ativos com a tela bloqueada ou quando Waze/Google Maps estiverem visíveis. A reprodução pode depender da política de áudio da central multimídia, do Android e das permissões.",12f,Color.LTGRAY))
     add(root,label("ATUALIZAÇÕES E PRIVACIDADE",18f,green))
-    toggle(root,"Verificar novas atualizações periodicamente","autoUpdates",true) {
-      UpdateScheduler.sync(this)
+    if(BuildConfig.OTA) {
+      toggle(root,"Verificar novas atualizações periodicamente","autoUpdates",true) {
+        UpdateScheduler.sync(this)
+      }
+      add(root,label("Verificação diária quando houver Internet. O Android pode adiar a execução para poupar bateria.",12f,Color.LTGRAY))
+      add(root,Button(this).apply {
+        text="VERIFICAR ATUALIZAÇÃO AGORA"
+        setOnClickListener { UpdateManager.check(this@SettingsActivity,false) }
+      })
+      toggle(root,"Participar das estatísticas anônimas de instalações no site","shareStats",true)
+      add(root,label("Quando habilitado, a consulta envia um identificador aleatório persistente e a versão. A atividade é pseudônima, não plenamente anônima. Não são enviados GPS, trajeto nem velocidade. O país pode ser estimado pelo servidor. Você pode desativar a opção.",12f,Color.LTGRAY))
+    } else {
+      add(root,label("As atualizações são entregues pelo Google Play. Esta versão não envia dados pela Internet: GPS, limites e alarmes funcionam totalmente no aparelho.",12f,Color.LTGRAY))
     }
-    add(root,label("Verificação diária quando houver Internet. O Android pode adiar a execução para poupar bateria.",12f,Color.LTGRAY))
-    add(root,Button(this).apply {
-      text="VERIFICAR ATUALIZAÇÃO AGORA"
-      setOnClickListener { UpdateManager.check(this@SettingsActivity,false) }
-    })
-    toggle(root,"Participar das estatísticas anônimas de instalações no site","shareStats",true)
-    add(root,label("Quando habilitado, a consulta envia um identificador aleatório persistente e a versão. A atividade é pseudônima, não plenamente anônima. Não são enviados GPS, trajeto nem velocidade. O país pode ser estimado pelo servidor. Você pode desativar a opção.",12f,Color.LTGRAY))
-    add(root,label("MIGRAÇÃO E CÓPIA DE SEGURANÇA",18f,green))
-    add(root,label("Antes de desinstalar uma beta antiga, exporte as configurações. Na nova versão assinada, importe esse arquivo. Por segurança, o identificador das estatísticas e permissões não são exportados.",12f,Color.LTGRAY))
+    add(root,label("CÓPIA DE SEGURANÇA",18f,green))
+    add(root,label("Exporte as configurações para um arquivo e importe-o em outro aparelho ou após reinstalar. Por segurança, o identificador das estatísticas e permissões não são exportados.",12f,Color.LTGRAY))
     add(root,Button(this).apply {
       text="EXPORTAR CONFIGURAÇÕES"
       setOnClickListener {
@@ -141,6 +144,7 @@ class SettingsActivity : Activity() {
     add(root,label("Alterações aplicadas automaticamente às próximas leituras de GPS. Sem Internet, o monitoramento e os alarmes continuam funcionando.",12f,Color.LTGRAY))
     add(root,Button(this).apply { text="SALVAR E VOLTAR";setOnClickListener { save();finish() } })
     setContentView(scroll)
+    EdgeToEdge.apply(this,scroll)
   }
   private fun save() {
     fun value(field:EditText,original:Int,min:Int,max:Int):Int =
