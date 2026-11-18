@@ -7,6 +7,8 @@ set -euo pipefail
 ALLOW_MISSING=${1:-}
 LOCK="$(dirname "$0")/../data/osm-regions.lock"
 for region in centro-oeste sul sudeste; do
+  # Gradle requires each asset pack's assets directory, even when it is still empty.
+  mkdir -p "osm_${region//-/_}/src/main/assets/osm"
   line="$(grep -E "^$region " "$LOCK" || true)"
   if [ -z "$line" ]; then
     if [ "$ALLOW_MISSING" = "--allow-missing" ]; then echo "::warning::No database pinned for $region"; continue; fi
