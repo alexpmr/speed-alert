@@ -1,0 +1,67 @@
+name: Measure regional OSM databases (temporary)
+# Temporary: builds Centro-Oeste, Sul and Sudeste databases in two profiles to size
+# the Play Asset Delivery packs. Runs only on the regional-osm branch.
+on:
+  push:
+    branches: [regional-osm]
+    paths:
+      - '.github/workflows/osm-regions-measure.yml'
+      - 'tools/build_osm_v3.py'
+permissions:
+  contents: read
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        region: [centro-oeste, sul, sudeste]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install osmium==4.*
+      - name: Download extract
+        shell: bash
+        run: |
+          set -euo pipefail
+          base=https://download.geofabrik.de/south-america/brazil/${{ matrix.region }}-latest.osm.pbf
+          curl --fail --location --retry 5 --retry-all-errors --connect-timeout 20 --max-time 2400 \
+            -o "$RUNNER_TEMP/r.osm.pbf" "$base"
+          curl --fail --location --retry 5 -o "$RUNNER_TEMP/r.md5" "$base.md5"
+          echo "$(cut -d' ' -f1 "$RUNNER_TEMP/r.md5")  $RUNNER_TEMP/r.osm.pbf" | md5sum -c -
+          ls -la "$RUNNER_TEMP/r.osm.pbf"
+      - name: Build both profiles
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for profile in slim full; do
+            /usr/bin/time -v python3 -I tools/build_osm_v3.py "$RUNNER_TEMP/r.osm.pbf" \
+              "dist/${{ matrix.region }}-$profile.sqlite" --bbox none --profile $profile \
+              --region ${{ matrix.region }} --label ${{ matrix.region }} 2> "$RUNNER_TEMP/time-$profile.txt"
+            grep -E "Maximum resident|Elapsed" "$RUNNER_TEMP/time-$profile.txt"
+          done
+      - name: Report sizes
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "### ${{ matrix.region }}"
+            echo "| perfil | sqlite MB | zip -9 MB | trechos | com limite | radares |"
+            echo "|---|---|---|---|---|---|"
+            for profile in slim full; do
+              f="dist/${{ matrix.region }}-$profile.sqlite"
+              zip -9 -q "$f.zip" "$f"
+              read -r roads speed cams < <(python3 -I -c "import sqlite3,sys;d=sqlite3.connect(sys.argv[1]);q=lambda s:d.execute(s).fetchone()[0];print(q('select count(*) from roads'),q('select count(*) from roads where fwd is not null or bwd is not null'),q('select count(*) from cameras'))" "$f")
+              echo "| $profile | $(( $(stat -c%s "$f") / 1048576 )) | $(( $(stat -c%s "$f.zip") / 1048576 )) | $roads | $speed | $cams |"
+              rm "$f.zip"
+            done
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: osm-${{ matrix.region }}
+          path: dist/*.sqlite
+          retention-days: 7
