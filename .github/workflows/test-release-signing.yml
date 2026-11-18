@@ -20,9 +20,9 @@ jobs:
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.10.2'
+          gradle-version: '8.14.3'
       - uses: android-actions/setup-android@v4
-      - run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
       - name: Restore verified offline OSM v3 data
         run: |
           set -euo pipefail
@@ -44,8 +44,9 @@ jobs:
             -storetype PKCS12 -alias speedalert -keyalg RSA -keysize 2048 \
             -validity 1 -dname "CN=CI QA Not For Distribution, O=PT2VHF, C=BR" \
             -storepass "$ANDROID_KEYSTORE_PASSWORD" -keypass "$ANDROID_KEY_PASSWORD"
-          gradle :app:assembleRelease :app:lintRelease --no-daemon --stacktrace
-          test -s app/build/outputs/apk/release/app-release.apk
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose \
-            app/build/outputs/apk/release/app-release.apk
+          gradle :app:assembleGithubRelease :app:lintGithubRelease :app:bundlePlayRelease :app:lintPlayRelease --no-daemon --stacktrace
+          test -s app/build/outputs/apk/github/release/app-github-release.apk
+          test -s app/build/outputs/bundle/playRelease/app-play-release.aab
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose \
+            app/build/outputs/apk/github/release/app-github-release.apk
           echo "Release signing and lint QA succeeded. APK purposely not uploaded or published."

@@ -15,13 +15,13 @@ jobs:
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.10.2'
+          gradle-version: '8.14.3'
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
       - name: Install Android platform
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
       - name: Compile Kotlin before downloading map data
-        run: gradle :app:compileDebugKotlin --no-daemon --stacktrace
+        run: gradle :app:compileGithubDebugKotlin :app:compilePlayDebugKotlin --no-daemon --stacktrace
       - name: Reuse verified OSM v3 dataset from preceding beta
         run: |
           set -euo pipefail
@@ -45,15 +45,17 @@ jobs:
           db.close()
           PY
       - name: Build Android v1.0.6 candidate
-        run: gradle :app:assembleDebug --no-daemon --stacktrace
+        run: gradle :app:assembleGithubDebug :app:assemblePlayDebug --no-daemon --stacktrace
       - name: Validate APK and offline database
         run: |
-          test -s app/build/outputs/apk/debug/app-debug.apk
-          sha256sum app/build/outputs/apk/debug/app-debug.apk
-          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -E 'classes.dex|assets/df_roads_v3.sqlite|ic_speed_alert'
+          test -s app/build/outputs/apk/github/debug/app-github-debug.apk
+          sha256sum app/build/outputs/apk/github/debug/app-github-debug.apk
+          unzip -l app/build/outputs/apk/github/debug/app-github-debug.apk | grep -E 'classes.dex|assets/df_roads_v3.sqlite|ic_speed_alert'
       - uses: actions/upload-artifact@v4
         with:
           name: PT2VHF-Speed-Alert-1.0.6-candidate-debug-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: |
+            app/build/outputs/apk/github/debug/app-github-debug.apk
+            app/build/outputs/apk/play/debug/app-play-debug.apk
           if-no-files-found: error
           retention-days: 30

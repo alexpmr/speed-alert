@@ -1,0 +1,106 @@
+name: Build Google Play bundle (AAB)
+# Builds the "play" flavor (no OTA, no REQUEST_INSTALL_PACKAGES, no network) as a signed AAB.
+# The signing key here is the Play UPLOAD key; Google re-signs with the app key (Play App Signing).
+# The very first AAB must be uploaded by hand in Play Console. From then on, if the
+# PLAY_SERVICE_ACCOUNT_JSON secret exists, this workflow can upload straight to a test track.
+on:
+  workflow_dispatch:
+    inputs:
+      track:
+        description: "Play track for automatic upload (needs PLAY_SERVICE_ACCOUNT_JSON)"
+        type: choice
+        options: [none, internal, alpha]
+        default: none
+      status:
+        description: "Release status (use draft while the app was never reviewed)"
+        type: choice
+        options: [draft, completed]
+        default: draft
+permissions:
+  contents: read
+concurrency:
+  group: speed-alert-play-bundle
+  cancel-in-progress: false
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+      OSM_SOURCE_SHA256: "9fab2b29e90f2d5b95682d257206e4f49a78d33c7e5562a1117c1588fa989b00"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+      - uses: android-actions/setup-android@v4
+      - name: Install Android SDK 36
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Require the permanent upload key
+        shell: bash
+        run: |
+          set -euo pipefail
+          for key in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "$(printenv "$key")" ]; then
+              echo "::error::Missing $key. Run scripts/setup_release_signing.ps1 first (see docs/GOOGLE_PLAY.md)."
+              exit 2
+            fi
+          done
+          export PT2VHF_SIGNING_STORE_FILE="$RUNNER_TEMP/speed-alert-release.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | LC_ALL=C tr -cd 'A-Za-z0-9+/=' | base64 -d > "$PT2VHF_SIGNING_STORE_FILE"
+          chmod 600 "$PT2VHF_SIGNING_STORE_FILE"
+          keytool -list -keystore "$PT2VHF_SIGNING_STORE_FILE" \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" > /dev/null
+          echo "PT2VHF_SIGNING_STORE_FILE=$PT2VHF_SIGNING_STORE_FILE" >> "$GITHUB_ENV"
+      - name: Restore SHA-256-verified offline database
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --connect-timeout 15 --max-time 200 \
+            -o "$RUNNER_TEMP/previous.apk" \
+            "https://github.com/alexpmr/speed-alert/releases/download/v1.0.3-beta.1/PT2VHF-Speed-Alert-v1.0.3-beta.1.apk"
+          echo "$OSM_SOURCE_SHA256  $RUNNER_TEMP/previous.apk" | sha256sum -c -
+          mkdir -p app/src/main/assets
+          unzip -p "$RUNNER_TEMP/previous.apk" assets/df_roads_v3.sqlite > app/src/main/assets/df_roads_v3.sqlite
+          python3 -c "import sqlite3;d=sqlite3.connect('app/src/main/assets/df_roads_v3.sqlite');assert d.execute('pragma quick_check').fetchone()[0]=='ok';assert d.execute('pragma user_version').fetchone()[0]==3"
+      - name: Build, lint and sign the Play bundle
+        run: gradle :app:bundlePlayRelease :app:lintPlayRelease --no-daemon --stacktrace
+      - name: Verify bundle contents and policy-sensitive permissions
+        shell: bash
+        run: |
+          set -euo pipefail
+          aab=app/build/outputs/bundle/playRelease/app-play-release.aab
+          test -s "$aab"
+          jarsigner -verify "$aab" | tail -1
+          unzip -l "$aab" | grep base/assets/df_roads_v3.sqlite
+          manifest=app/build/intermediates/merged_manifest/playRelease/processPlayReleaseMainManifest/AndroidManifest.xml
+          if grep -E 'REQUEST_INSTALL_PACKAGES|android.permission.INTERNET' "$manifest"; then
+            echo "::error::Play flavor must not request install or network permissions"; exit 4
+          fi
+          grep 'targetSdkVersion="36"' "$manifest"
+          mkdir -p dist
+          cp "$aab" dist/PT2VHF-Speed-Alert-play.aab
+          (cd dist && sha256sum *.aab > SHA256SUMS.txt)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PT2VHF-Speed-Alert-Google-Play-AAB
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload to Google Play test track
+        if: ${{ inputs.track != 'none' && env.PLAY_SERVICE_ACCOUNT_JSON != '' }}
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.pt2vhf.speedalert
+          releaseFiles: dist/PT2VHF-Speed-Alert-play.aab
+          track: ${{ inputs.track }}
+          status: ${{ inputs.status }}

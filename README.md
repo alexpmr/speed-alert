@@ -14,7 +14,7 @@ Aplicativo Android independente (8.0+) com velocidade GNSS e limites offline OSM
 - Operação de GPS/limites/alertas completamente offline; OTA só com Internet.
 
 ## Compilação
-JDK 17, Gradle 8.10.2, SDK 35, Python 3 e osmium. O Actions baixa o extrato Centro-Oeste Geofabrik e gera SQLite v3.
+JDK 17, Gradle 8.14.3, SDK 36, Python 3 e osmium. O Actions baixa o extrato Centro-Oeste Geofabrik e gera SQLite v3.
 
 ## Limitações
 Beta ainda sem teste em dispositivo/carro. Bases OSM podem ser incompletas; falsos negativos/positivos de limite ou radar são possíveis, sobretudo em vias paralelas. A sinalização oficial prevalece. Uma assinatura debug variável entre builds pode exigir desinstalar a versão anterior; a assinatura de produção deve ser persistente antes de considerar o OTA transparente. Android Auto e Android Automotive não equivalem a APK instalado numa central Android comum.
@@ -41,3 +41,9 @@ O novo APK com certificado de release também será incompatível com as betas h
 - Android: cópia de segurança das configurações em JSON por meio do seletor de arquivos do sistema, para recuperar preferências após migração única da beta com assinatura de depuração incompatível.
 - Android: assinatura de release permanente continua obrigatória para atualizar as próximas versões sem desinstalar.
 - iOS: implementação SwiftUI independente, com monitoramento GPS, base offline v3, radar e áudio em segundo plano. Código em ios/; compilação para simulador em Actions. IPA para iPhone exige credenciais Apple e TestFlight/App Store ou distribuição autorizada.
+
+## Google Play
+- Dois flavors: `github` (APK do site com OTA e estatísticas opcionais) e `play` (AAB para o Google Play, sem OTA, sem `REQUEST_INSTALL_PACKAGES` e sem acesso à Internet, exigências da política do Play).
+- compileSdk/targetSdk 36 (exigência do Play desde 31/08/2026), com telas edge-to-edge que respeitam as barras do sistema.
+- AAB: workflow manual **Build Google Play bundle (AAB)**. Passo a passo do Console, Segurança dos dados, declaração do serviço em primeiro plano e regra dos 12 testadores em [docs/GOOGLE_PLAY.md](docs/GOOGLE_PLAY.md). Política de privacidade: [docs/PRIVACY_POLICY.md](docs/PRIVACY_POLICY.md).
+- Compilação local: JDK 17+, Gradle 8.14.3, SDK 36 (`gradle :app:bundlePlayRelease` ou `:app:assembleGithubRelease`).
