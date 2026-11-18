@@ -1,5 +1,5 @@
 # Offline OSM database bundled into the Android and iOS apps.
 # Updated by the "Rebuild offline OSM database" workflow (via pull request).
 # URL may point to a raw .sqlite release asset or to an .apk that contains assets/df_roads_v3.sqlite.
-URL=https://github.com/alexpmr/speed-alert/releases/download/v1.0.3-beta.1/PT2VHF-Speed-Alert-v1.0.3-beta.1.apk
-SHA256=9fab2b29e90f2d5b95682d257206e4f49a78d33c7e5562a1117c1588fa989b00
+URL=https://github.com/alexpmr/speed-alert/releases/download/osm-db-20261118-1627/df_roads_v3.sqlite
+SHA256=9e33181d38d74afba10e23bc75e2a06ec8576711d2620c4238043d8a99aa259c
