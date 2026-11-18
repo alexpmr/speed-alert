@@ -39,7 +39,10 @@ O workflow falha se o manifest do flavor `play` contiver `REQUEST_INSTALL_PACKAG
   - Tipo: **Localização**.
   - Descrição sugerida: "O app alerta o motorista quando a velocidade medida pelo GPS excede o limite da via. O serviço de localização em primeiro plano mantém os alertas sonoros ativos com a tela bloqueada ou com um app de navegação (Waze/Google Maps) em primeiro plano. Ele só inicia depois que o usuário aceita o aviso inicial e pode ser parado pelo botão Parar da notificação."
   - Vídeo (YouTube não listado, ~30 s): abrir o app → aceitar o aviso → conceder localização → mostrar a notificação → ir para outro app/bloquear a tela → simular excesso (limite manual baixo, ex.: 10 km/h) e mostrar o alarme tocando.
-- **Localização em segundo plano:** não é solicitada (`ACCESS_BACKGROUND_LOCATION` ausente); não há declaração a fazer.
+- **Segundo tipo de serviço em primeiro plano, a partir da 1.0.8: Sincronização de dados.** A biblioteca oficial `com.google.android.play:asset-delivery`, que baixa as regiões offline, declara um serviço `dataSync` (`ExtractionForegroundService`) para descompactar os packs grandes.
+  - Descrição sugerida: "Usado apenas pela biblioteca Play Asset Delivery do Google para baixar e descompactar as bases de mapas offline por região (Centro-Oeste, Sul, Sudeste) quando o usuário as solicita em Configurações → Regiões offline, ou automaticamente após a instalação (Centro-Oeste). Mostra notificação de progresso e termina ao concluir o download."
+  - Vídeo: Configurações → Regiões offline → BAIXAR Sudeste → notificação de download → status "Instalada".
+- - **Localização em segundo plano:** não é solicitada (`ACCESS_BACKGROUND_LOCATION` ausente); não há declaração a fazer.
 
 ## 4. Ficha da loja
 - Ícone 512×512 PNG (32 bits, sem transparência nas bordas é recomendado).
