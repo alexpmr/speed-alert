@@ -5,7 +5,7 @@
 Esta política se aplica ao aplicativo **PT2VHF Speed Alert** (`com.pt2vhf.speedalert`) distribuído pelo Google Play.
 
 ## Dados que o aplicativo usa
-- **Localização precisa (GPS):** usada apenas no próprio aparelho para calcular a velocidade, identificar a via na base offline OpenStreetMap, mostrar o limite e emitir alertas. A localização **não é enviada** a servidores, não é gravada em histórico e não é compartilhada com terceiros.
+- **Localização precisa (GPS):** usada no próprio aparelho para calcular a velocidade, identificar a via na base offline OpenStreetMap, mostrar o limite e emitir alertas. Ela não é gravada em histórico. Só sai do aparelho em dois casos, descritos abaixo: o nome do bloco de mapa baixado, que indica uma região aproximada, e os relatos de erro que você decidir publicar.
 - **Configurações do aplicativo** (limite manual, tolerância, volume, tipo de alarme etc.): ficam somente no armazenamento privado do aparelho. A exportação de configurações só ocorre quando você escolhe um arquivo pelo seletor do Android.
 
 ## Download da base de mapas por blocos
