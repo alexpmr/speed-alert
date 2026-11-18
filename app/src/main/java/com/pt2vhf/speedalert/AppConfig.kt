@@ -3,6 +3,7 @@ import android.content.Context
 import android.content.SharedPreferences
 
 object AppConfig {
+  const val PRIVACY_URL = "https://alexpmr.github.io/speed-alert/privacidade.html"
   fun prefs(c: Context) = c.getSharedPreferences("config", Context.MODE_PRIVATE)
   fun auto(p: SharedPreferences) = p.getBoolean("autoStart",true)
   fun screen(p: SharedPreferences) = p.getBoolean("keepScreenOn",true)

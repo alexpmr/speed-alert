@@ -21,7 +21,7 @@ O workflow falha se o manifest do flavor `play` contiver `REQUEST_INSTALL_PACKAG
 
 ## 3. Play Console — configuração do app
 - **Criar app:** nome "PT2VHF Speed Alert", idioma pt-BR, App, Gratuito.
-- **Política de privacidade:** publique `docs/PRIVACY_POLICY.md` em uma URL pública (ex.: `https://www.pt2vhf.com/speed/privacidade`) e informe a URL.
+- **Política de privacidade:** `https://alexpmr.github.io/speed-alert/privacidade.html`, servida pelo GitHub Pages a partir de `docs/privacidade.html` (Settings → Pages → Deploy from a branch → `main` / `/docs`). O app também abre esse link em Configurações, como o Play exige. Ao mudar `docs/PRIVACY_POLICY.md`, gere de novo o HTML.
 - **Acesso ao app:** todo o app está disponível sem login.
 - **Anúncios:** não contém anúncios.
 - **Classificação de conteúdo:** categoria "Utilitário/Produtividade"; respostas todas "não" → Livre.

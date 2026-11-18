@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Política de Privacidade — PT2VHF Speed Alert</title>
+<style>
+:root{--bg:#ffffff;--fg:#1b2430;--muted:#5a6878;--link:#0b6bcb;--rule:#e3e8ee}
+@media (prefers-color-scheme: dark){:root{--bg:#0c141d;--fg:#e8eef4;--muted:#a3b3c2;--link:#5ed69c;--rule:#22323f}}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:760px;margin:0 auto;padding:32px 16px 64px}
+h1{font-size:1.7rem;line-height:1.25;margin:0 0 .5rem}
+h2{font-size:1.2rem;margin:2rem 0 .5rem;padding-top:1rem;border-top:1px solid var(--rule)}
+a{color:var(--link)} p,li{color:var(--fg)} ul{padding-left:1.25rem}
+</style>
+</head>
+<body><main>
+<h1>Política de Privacidade — PT2VHF Speed Alert (Android, Google Play)</h1>
+<p>Última atualização: 18 de novembro de 2026 (versão 1.0.8)</p>
+<p>Esta política se aplica ao aplicativo <strong>PT2VHF Speed Alert</strong> (<code>com.pt2vhf.speedalert</code>) distribuído pelo Google Play.</p>
+<h2>Dados que o aplicativo usa</h2>
+<ul>
+<li><strong>Localização precisa (GPS):</strong> usada no próprio aparelho para calcular a velocidade, identificar a via na base offline OpenStreetMap, mostrar o limite e emitir alertas. Ela não é gravada em histórico. Só sai do aparelho em dois casos, descritos abaixo: o nome do bloco de mapa baixado, que indica uma região aproximada, e os relatos de erro que você decidir publicar.</li>
+<li><strong>Configurações do aplicativo</strong> (limite manual, tolerância, volume, tipo de alarme etc.): ficam somente no armazenamento privado do aparelho. A exportação de configurações só ocorre quando você escolhe um arquivo pelo seletor do Android.</li>
+</ul>
+<h2>Download da base de mapas por blocos</h2>
+<p>Os limites de velocidade e radares são baixados em blocos de cerca de 110 km × 110 km ao redor de onde você está. Para isso, o aplicativo pede ao servidor de arquivos (atualmente o GitHub, da Microsoft) apenas o nome do bloco, como "s16w048". Isso revela a região aproximada, mas não a posição exata, a velocidade, o trajeto nem qualquer identificador seu ou do aparelho. Como em qualquer acesso à Internet, o servidor recebe o endereço IP da conexão. Você pode limitar os downloads ao Wi-Fi ou baixar regiões inteiras antes de viajar, em Configurações.</p>
+<h2>Relatos de erro (opcionais, enviados só com sua confirmação)</h2>
+<p>Com "Marcar erro", o aplicativo guarda no próprio aparelho a posição, a direção, a via e o limite ou radar exibidos naquele momento. Nada é enviado nesse passo.</p>
+<p>Se você decidir <strong>publicar</strong> um relato, o aplicativo cria uma <strong>nota pública e anônima no OpenStreetMap</strong> (openstreetmap.org, mantido pela OpenStreetMap Foundation). A nota contém:
+- a posição marcada;
+- o tipo do problema, o valor informado por você e o comentário;
+- a via e os valores que o app mostrava;
+- a data e as versões do app e da base.</p>
+<p>A nota fica visível para qualquer pessoa e é regida pela política de privacidade da OpenStreetMap Foundation (https://osmfoundation.org/wiki/Privacy_Policy). O servidor do OSM recebe também o endereço IP da conexão, como em qualquer acesso à Internet. Não enviamos nome, e-mail, identificador do aparelho nem histórico de trajetos.</p>
+<h2>Dados que o aplicativo NÃO coleta</h2>
+<p>Não há contas, anúncios, rastreamento, analytics nem identificadores. Além dos nomes dos blocos de mapa baixados e dos relatos que você decidir publicar, o aplicativo não transmite dados.</p>
+<h2>Funcionamento em segundo plano</h2>
+<p>Depois que você aceita o aviso inicial, o aplicativo mantém um serviço em primeiro plano, com notificação permanente, para continuar medindo a velocidade e emitindo alertas quando a tela está bloqueada ou outro aplicativo (como um navegador GPS) está visível. Você pode interromper o serviço a qualquer momento pelo botão <strong>Parar</strong> da notificação.</p>
+<h2>Permissões</h2>
+<ul>
+<li>Localização precisa e aproximada: medir velocidade e posição na via.</li>
+<li>Serviço em primeiro plano (localização): manter os alertas ativos com a tela bloqueada.</li>
+<li>Notificações: mostrar a notificação do serviço.</li>
+</ul>
+<h2>Exclusão de dados</h2>
+<p>Os dados locais, incluindo os relatos não publicados, são apagados ao excluir o relato, ao desinstalar o aplicativo ou ao limpar os dados nas Configurações do Android. Uma nota já publicada no OpenStreetMap pode ser comentada e fechada por qualquer mapeador. Para pedir a remoção de uma nota, siga o procedimento da OpenStreetMap Foundation.</p>
+<h2>Crianças</h2>
+<p>O aplicativo é destinado a motoristas adultos e não é direcionado a crianças.</p>
+<h2>Dados de mapas</h2>
+<p>Base de vias © colaboradores do OpenStreetMap, licença ODbL 1.0.</p>
+<h2>Contato</h2>
+<p>PT2VHF — https://www.pt2vhf.com</p>
+</main></body>
+</html>
