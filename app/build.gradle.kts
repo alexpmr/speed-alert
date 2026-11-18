@@ -58,3 +58,29 @@ dependencies {
     "playImplementation"("com.google.android.play:app-update:2.1.0")
     "playImplementation"("com.google.android.play:asset-delivery:2.3.0")
 }
+
+// A release without its offline databases installs fine but shows "BASE OFFLINE INDISPONÍVEL"
+// (this happened with a hand-built 1.0.6 AAB). The databases are not in Git: restore them first.
+//   Play AAB:    bash scripts/restore_osm_regions.sh
+//   Site APK:    bash scripts/restore_osm_db.sh app/src/github/assets/df_roads_v3.sqlite
+val requirePlayDatabases by tasks.registering {
+    doLast {
+        val missing = listOf("centro-oeste", "sul", "sudeste").filter { r ->
+            val f = rootProject.file("osm_${r.replace('-', '_')}/src/main/assets/osm/$r.sqlite")
+            !f.isFile || f.length() < 10_000_000
+        }
+        if (missing.isNotEmpty()) throw GradleException(
+            "Bases offline ausentes para: $missing. Rode antes: bash scripts/restore_osm_regions.sh")
+    }
+}
+val requireGithubDatabase by tasks.registering {
+    doLast {
+        val f = file("src/github/assets/df_roads_v3.sqlite")
+        if (!f.isFile || f.length() < 10_000_000) throw GradleException(
+            "Base offline do DF ausente. Rode antes: bash scripts/restore_osm_db.sh app/src/github/assets/df_roads_v3.sqlite")
+    }
+}
+tasks.matching { it.name == "bundlePlayRelease" || it.name == "packagePlayReleaseBundle" }
+    .configureEach { dependsOn(requirePlayDatabases) }
+tasks.matching { it.name == "assembleGithubRelease" || it.name == "packageGithubRelease" }
+    .configureEach { dependsOn(requireGithubDatabase) }
