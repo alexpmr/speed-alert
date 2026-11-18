@@ -21,7 +21,9 @@ class AlarmAudio(context:Context) {
     private data class Segment(val duration:Int,val hz0:Double,val hz1:Double=hz0)
     private val manager=context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private val audioAttributes=AudioAttributes.Builder()
-        .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+        // Navigation guidance (like Waze/Maps): follows media volume and car Bluetooth.
+        // SONIFICATION used the system stream, silent on some phones even at full media volume.
+        .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
         .build()
     private val audioRate=22050
