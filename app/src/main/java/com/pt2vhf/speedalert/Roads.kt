@@ -12,8 +12,20 @@ class Roads(context:Context) {
   data class Result(
     val limit:Double?, val source:String,
     val roadName:String="Via não identificada",
-    val radarDistance:Double?=null, val radarLimit:Double?=null
+    val radarDistance:Double?=null, val radarLimit:Double?=null,
+    val radarKey:String?=null
   )
+  companion object {
+    /** Build date of the installed offline database (metadata.updated_utc), for bug reports. */
+    fun dataVersion(context:Context):String=try {
+      val f=File(context.applicationContext.filesDir,"df_roads_v3.sqlite")
+      SQLiteDatabase.openDatabase(f.absolutePath,null,SQLiteDatabase.OPEN_READONLY).use { d ->
+        d.rawQuery("SELECT v FROM metadata WHERE k='updated_utc'",null).use {
+          if(it.moveToFirst())it.getString(0).take(10) else "?"
+        }
+      }
+    } catch(_:Exception) {"?"}
+  }
   private val app=context.applicationContext
   private val file=File(app.filesDir,"df_roads_v3.sqlite")
   private val db:SQLiteDatabase?
@@ -109,6 +121,7 @@ class Roads(context:Context) {
     val roadName=best.name.ifBlank{"Via não identificada"}
     var radarDistance:Double?=null
     var radarLimit:Double?=null
+    var radarKey:String?=null
     // Show an upcoming camera farther away than the audible warning threshold.
     // The service activates the radar alarm only inside the user-selected range.
     val radius=1500.0
@@ -135,11 +148,12 @@ class Roads(context:Context) {
           if(dist<(radarDistance ?: Double.POSITIVE_INFINITY)) {
             radarDistance=dist
             radarLimit=posted
+            radarKey=String.format(java.util.Locale.US,"%.6f,%.6f",c.getDouble(0),c.getDouble(1))
           }
         }
       }
     } catch(e:Exception) {Log.w("PT2VHF.Roads","Radar lookup failed",e)}
-    return Result(best.speed,"OSM OFFLINE v3",roadName,radarDistance,radarLimit)
+    return Result(best.speed,"OSM OFFLINE v3",roadName,radarDistance,radarLimit,radarKey)
   }
   private fun angle(a:Double,b:Double)=abs((a-b+540.0)%360.0-180.0)
 }

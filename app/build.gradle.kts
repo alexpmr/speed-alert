@@ -7,8 +7,8 @@ android {
         applicationId="com.pt2vhf.speedalert"
         minSdk=26
         targetSdk=36
-        versionCode=106
-        versionName="1.0.6"
+        versionCode=107
+        versionName="1.0.7"
     }
     buildFeatures { buildConfig=true }
     // github: APK distributed by pt2vhf.com/GitHub, with the site OTA updater and opt-in stats.
@@ -52,4 +52,5 @@ android {
 dependencies {
     implementation("androidx.core:core:1.15.0")
     "githubImplementation"("androidx.work:work-runtime-ktx:2.11.2")
+    "playImplementation"("com.google.android.play:app-update:2.1.0")
 }

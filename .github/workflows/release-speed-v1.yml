@@ -16,8 +16,7 @@ jobs:
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
       ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-      RELEASE_VERSION: "1.0.6"
-      OSM_SOURCE_SHA256: "9fab2b29e90f2d5b95682d257206e4f49a78d33c7e5562a1117c1588fa989b00"
+      RELEASE_VERSION: "1.0.7"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -53,29 +52,8 @@ jobs:
           unset ANDROID_KEYSTORE_BASE64
       - name: Install Android SDK 36
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
-      - name: Restore SHA-256-verified regional offline database
-        shell: bash
-        run: |
-          set -euo pipefail
-          curl --fail --location --retry 3 --connect-timeout 15 --max-time 200 \
-            -o "$RUNNER_TEMP/previous.apk" \
-            "https://github.com/alexpmr/speed-alert/releases/download/v1.0.3-beta.1/PT2VHF-Speed-Alert-v1.0.3-beta.1.apk"
-          echo "$OSM_SOURCE_SHA256  $RUNNER_TEMP/previous.apk" | sha256sum -c -
-          mkdir -p app/src/main/assets
-          unzip -p "$RUNNER_TEMP/previous.apk" assets/df_roads_v3.sqlite \
-            > app/src/main/assets/df_roads_v3.sqlite
-          python3 - <<'PY'
-          import sqlite3
-          db=sqlite3.connect('app/src/main/assets/df_roads_v3.sqlite')
-          assert db.execute('pragma quick_check').fetchone()[0]=='ok'
-          assert db.execute('pragma user_version').fetchone()[0]==3
-          roads=db.execute('select count(*) from roads').fetchone()[0]
-          names=db.execute("select count(*) from roads where name<>'' or ref<>''").fetchone()[0]
-          cameras=db.execute('select count(*) from cameras').fetchone()[0]
-          assert roads>=200000 and names>=150000 and cameras>=100,(roads,names,cameras)
-          print('VALIDATED_OFFLINE',roads,names,cameras)
-          db.close()
-          PY
+      - name: Restore pinned offline OSM database (data/osm-db.lock)
+        run: bash scripts/restore_osm_db.sh app/src/main/assets/df_roads_v3.sqlite
       - name: Compile, lint and assemble signed release
         run: |
           set -euo pipefail

@@ -58,5 +58,11 @@ Depois que o **primeiro AAB foi enviado manualmente**:
 3. Grave o JSON no secret `PLAY_SERVICE_ACCOUNT_JSON`.
 4. Rode o workflow com track `internal` ou `alpha`. Use status `draft` enquanto o app nunca tiver passado por revisão.
 
-## 7. Cada nova versão
+## 7. Atualizações para os usuários
+- O Play atualiza automaticamente conforme a configuração de cada aparelho (normalmente em 1–2 dias, no Wi-Fi).
+- O flavor `play` usa a **Play In-App Updates API** (atualização flexível). Ao abrir o app, se houver versão nova, o Play mostra "Atualizar" e baixa em segundo plano, sem parar o monitoramento. O pedido para reiniciar só aparece com o veículo parado (< 5 km/h). Se o usuário recusar, o app pergunta de novo no máximo uma vez a cada 24 h por versão.
+- Só funciona em instalações feitas pelo Play (teste interno ou fechado servem para testar). Para ver o aviso, publique uma versão com `versionCode` maior.
+- Segurança dos dados: a biblioteca não adiciona permissões, e a comunicação é feita com o app da Play Store. Confira a orientação atual do Google sobre as bibliotecas Play Core antes de enviar o formulário.
+
+## 8. Cada nova versão
 Aumente `versionCode` (e `versionName`) em `app/build.gradle.kts`; o Play rejeita versionCode repetido.
