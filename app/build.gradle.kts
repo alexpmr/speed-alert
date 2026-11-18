@@ -53,6 +53,7 @@ dependencies {
     implementation("androidx.core:core:1.15.0")
     "githubImplementation"("androidx.work:work-runtime-ktx:2.11.2")
     "playImplementation"("com.google.android.play:app-update:2.1.0")
+    testImplementation("junit:junit:4.13.2")
 }
 
 // The site APK bundles the DF database (not in Git) so it works offline from the first run;

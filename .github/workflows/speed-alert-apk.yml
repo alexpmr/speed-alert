@@ -21,7 +21,7 @@ jobs:
       - name: Install Android platform
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
       - name: Compile Kotlin before downloading map data
-        run: gradle :app:compileGithubDebugKotlin :app:compilePlayDebugKotlin --no-daemon --stacktrace
+        run: gradle :app:compileGithubDebugKotlin :app:compilePlayDebugKotlin :app:testPlayDebugUnitTest --no-daemon --stacktrace
       - name: Restore pinned offline OSM database (data/osm-db.lock)
         run: bash scripts/restore_osm_db.sh app/src/github/assets/df_roads_v3.sqlite
       - name: Build Android v1.0.8 candidate

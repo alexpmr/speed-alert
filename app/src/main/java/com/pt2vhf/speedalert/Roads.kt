@@ -152,35 +152,29 @@ class Roads(context:Context) {
     var radarDistance:Double?=null
     var radarLimit:Double?=null
     var radarKey:String?=null
-    // Show an upcoming camera farther away than the audible warning threshold.
-    // The service activates the radar alarm only inside the user-selected range.
+    // Show an upcoming camera farther away than the audible warning threshold, on this or
+    // the next OSM ways. The service activates the radar alarm only inside the user-selected range.
     val radius=1500.0
     val offset=(radius+40.0)/111320.0
     val latTiles=(offset*1000).toInt()+2
     val lonTiles=(offset*1000/max(0.4,cos(Math.toRadians(lat)))).toInt()+2
     try {
+      val cams=ArrayList<CameraAhead.Camera>()
       best.db.db.rawQuery(
-        "SELECT lat,lon,speed FROM cameras WHERE wayid=? AND "+
+        "SELECT lat,lon,speed,wayid FROM cameras WHERE "+
         "tile_lat BETWEEN ? AND ? AND tile_lon BETWEEN ? AND ?",
-        arrayOf(best.wayid.toString(),(tlat-latTiles).toString(),(tlat+latTiles).toString(),
+        arrayOf((tlat-latTiles).toString(),(tlat+latTiles).toString(),
           (tlon-lonTiles).toString(),(tlon+lonTiles).toString())
       ).use { c ->
-        val factor=111320.0*cos(Math.toRadians(lat))
         while(c.moveToNext()) {
-          val east=(c.getDouble(1)-lon)*factor
-          val north=(c.getDouble(0)-lat)*111320.0
-          val dist=hypot(east,north)
-          if(dist>radius || dist<8.0)continue
-          val heading=(Math.toDegrees(atan2(east,north))+360)%360
-          if(angle(loc.bearing.toDouble(),heading)>45.0)continue
           val posted=if(c.isNull(2))best.speed else c.getDouble(2)
-          if(posted==null)continue
-          if(dist<(radarDistance ?: Double.POSITIVE_INFINITY)) {
-            radarDistance=dist
-            radarLimit=posted
-            radarKey=String.format(java.util.Locale.US,"%.6f,%.6f",c.getDouble(0),c.getDouble(1))
-          }
+          if(posted!=null)cams.add(CameraAhead.Camera(c.getDouble(0),c.getDouble(1),posted,c.getLong(3)==best.wayid))
         }
+      }
+      CameraAhead.nearest(lat,lon,loc.bearing.toDouble(),cams,radius)?.let { (cam,dist) ->
+        radarDistance=dist
+        radarLimit=cam.speed
+        radarKey=String.format(java.util.Locale.US,"%.6f,%.6f",cam.lat,cam.lon)
       }
     } catch(e:Exception) {Log.w("PT2VHF.Roads","Radar lookup failed",e)}
     return Result(best.speed,"OSM OFFLINE • "+best.db.label,roadName,radarDistance,radarLimit,radarKey,best.wayid)
