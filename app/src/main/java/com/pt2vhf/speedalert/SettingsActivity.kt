@@ -15,7 +15,6 @@ class SettingsActivity : Activity() {
   private lateinit var beepMs: EditText
   private lateinit var pauseMs: EditText
   private val navy = Color.rgb(12,20,29)
-  private var regionsCleanup:()->Unit={}
   private val exportRequest=7031
   private val importRequest=7032
   private val white = Color.WHITE
@@ -128,8 +127,7 @@ class SettingsActivity : Activity() {
       text="RELATOS DE ERRO (${Reports.pending(this@SettingsActivity)} pendentes)"
       setOnClickListener { startActivity(Intent(this@SettingsActivity,ReportsActivity::class.java)) }
     })
-    regionsCleanup=RegionPacks.addSettingsSection(this,root,
-      { add(root,label(it,18f,green)) },{ add(root,label(it,12f,Color.LTGRAY)) })
+    tilesSection(root)
     add(root,label("CÓPIA DE SEGURANÇA",18f,green))
     add(root,label("Exporte as configurações para um arquivo e importe-o em outro aparelho ou após reinstalar. Por segurança, o identificador das estatísticas e permissões não são exportados.",12f,Color.LTGRAY))
     add(root,Button(this).apply {
@@ -196,5 +194,59 @@ class SettingsActivity : Activity() {
     }
   }
   override fun onPause() {save();super.onPause()}
-  override fun onDestroy() {regionsCleanup();super.onDestroy()}
+  private fun reloadMonitor() {
+    if(MonitorService.latest!=null)
+      try { startService(Intent(this,MonitorService::class.java).setAction(MonitorService.RELOAD)) } catch(_:Exception) {}
+  }
+  /** Map data in ~110 km tiles: downloaded around the driver, kept for trips, evicted when unused. */
+  private fun tilesSection(root:LinearLayout) {
+    add(root,label("BASE OFFLINE POR BLOCOS",18f,green))
+    add(root,label("Limites e radares são baixados em blocos de cerca de 110 km ao redor de onde você está, "+
+      "e os não usados há 30 dias são apagados. Cobertura: Centro-Oeste, Sudeste e Sul. "+
+      "Antes de viajar para um lugar sem sinal, baixe a região inteira.",12f,Color.LTGRAY))
+    val status=label("",13f)
+    add(root,status)
+    fun refresh() {
+      val (n,bytes)=TileStore.usage(this)
+      status.text="$n blocos no aparelho • ${(bytes+524287)/1048576} MB • dados OSM de ${TileStore.dataDate(this)}"+
+        (if(TileStore.busy)" • baixando…" else "")+(TileStore.lastError?.let { " • último erro: $it" }?:"")
+    }
+    refresh()
+    toggle(root,"Baixar blocos só no Wi-Fi","tilesWifiOnly",false)
+    seek(root,"Espaço máximo para blocos automáticos","tileLimitMb",500,4000," MB")
+    for((id,title) in listOf("centro-oeste" to "CENTRO-OESTE","sudeste" to "SUDESTE","sul" to "SUL")) {
+      add(root,Button(this).apply {
+        val mb=TileStore.regionSizeMb(this@SettingsActivity,id)
+        text="BAIXAR $title PARA VIAGEM"+(if(mb>0)" (~$mb MB)" else "")
+        setOnClickListener {
+          isEnabled=false
+          Toast.makeText(this@SettingsActivity,"Baixando $title…",Toast.LENGTH_SHORT).show()
+          Thread {
+            val ids=TileStore.regionTiles(this@SettingsActivity,id)
+            val changed=if(ids.isEmpty())false else TileStore.ensure(this@SettingsActivity,ids,pin=true) { done,total ->
+              runOnUiThread { status.text="Baixando $title: $done de $total blocos…" } }
+            runOnUiThread {
+              if(isFinishing)return@runOnUiThread
+              isEnabled=true; refresh()
+              if(changed)reloadMonitor()
+              Toast.makeText(this@SettingsActivity,
+                if(ids.isEmpty())"Sem Internet ou lista de blocos indisponível." else
+                TileStore.lastError?.let { "Concluído com falhas: $it" } ?: "$title disponível offline.",
+                Toast.LENGTH_LONG).show()
+            }
+          }.start()
+        }
+      })
+    }
+    add(root,Button(this).apply {
+      text="APAGAR BLOCOS BAIXADOS"
+      setOnClickListener {
+        android.app.AlertDialog.Builder(this@SettingsActivity).setTitle("Apagar blocos?")
+          .setMessage("Os blocos ao redor serão baixados de novo automaticamente quando houver Internet.")
+          .setNegativeButton("Cancelar",null)
+          .setPositiveButton("Apagar") { _,_ -> TileStore.clear(this@SettingsActivity);reloadMonitor();refresh() }
+          .show()
+      }
+    })
+  }
 }

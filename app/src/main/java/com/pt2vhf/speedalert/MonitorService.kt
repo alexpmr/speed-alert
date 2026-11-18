@@ -33,6 +33,25 @@ class MonitorService:Service() {
   /** Loaded off the main thread: copying a bundled regional database can take seconds. */
   @Volatile private var roads:Roads?=null
   private var lastReload=0L
+  private var tilesFor:String?=null
+  private var tilesAt=0L
+  @Volatile private var tilesRunning=false
+  /** Download/refresh the 3x3 tiles around the driver off the main thread; reload when changed. */
+  private fun maintainTiles(lat:Double,lon:Double) {
+    val here=TileStore.tileId(lat,lon)
+    val now=SystemClock.elapsedRealtime()
+    if(tilesRunning || (here==tilesFor && now-tilesAt<10*60_000L))return
+    tilesFor=here; tilesAt=now; tilesRunning=true
+    Thread {
+      try {
+        val keep=TileStore.around(lat,lon)
+        val changed=TileStore.ensure(this,keep)
+        val evicted=TileStore.evict(this,keep)
+        if(changed || evicted)handler.post { loadRoads() }
+      } catch(e:Exception) { android.util.Log.w("PT2VHF.Tiles","maintain",e) }
+      finally { tilesRunning=false }
+    }.apply { name="pt2vhf-tiles";start() }
+  }
   private fun loadRoads() {
     lastReload=SystemClock.elapsedRealtime()
     Thread {
@@ -110,12 +129,14 @@ class MonitorService:Service() {
     lastFix=SystemClock.elapsedRealtime()
     val speed=loc.speed.toDouble()*3.6
     val loaded=roads
-    val selected=if(!AppConfig.offline(prefs)) Roads.Result(null,"BASE OFFLINE DESATIVADA")
+    val selected=(if(!AppConfig.offline(prefs)) Roads.Result(null,"BASE OFFLINE DESATIVADA")
       else loaded?.resolve(loc,AppConfig.radarRange(prefs).toDouble())
-        ?: Roads.Result(null,"CARREGANDO BASE OFFLINE")
-    // A region may finish downloading (Play fast-follow / on-demand) while we are running.
-    if(loaded!=null && (selected.source.startsWith("REGIÃO SEM BASE") || selected.source.startsWith("BASE OFFLINE INDISPONÍVEL")) &&
-      SystemClock.elapsedRealtime()-lastReload>60_000L) loadRoads()
+        ?: Roads.Result(null,"CARREGANDO BASE OFFLINE"))
+      .let { r -> if(r.source.startsWith("REGIÃO SEM BASE") || r.source.startsWith("BASE OFFLINE INDISPONÍVEL"))
+        r.copy(source=if(TileStore.busy || tilesRunning)"BAIXANDO BASE DESTA REGIÃO…"
+          else if(!TileStore.networkAllowed(this))"SEM BASE AQUI: conecte à Internet para baixar"
+          else "REGIÃO SEM COBERTURA (Centro-Oeste, Sudeste e Sul)") else r }
+    if(AppConfig.offline(prefs))maintainTiles(loc.latitude,loc.longitude)
     val max=if(AppConfig.manual(prefs)) AppConfig.manualLimit(prefs).toDouble() else selected.limit
     val excess=max!=null && speed>max+AppConfig.tolerance(prefs)
     val radarExcess=selected.radarDistance!=null && selected.radarLimit!=null &&

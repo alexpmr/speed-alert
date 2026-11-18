@@ -21,4 +21,6 @@ object AppConfig {
   fun autoUpdates(p: SharedPreferences) = p.getBoolean("autoUpdates",true)
   fun radarChime(p: SharedPreferences) = p.getBoolean("radarChime",true)
   fun showCoords(p: SharedPreferences) = p.getBoolean("showCoords",true)
+  fun tilesWifiOnly(p: SharedPreferences) = p.getBoolean("tilesWifiOnly",false)
+  fun tileLimitMb(p: SharedPreferences) = p.getInt("tileLimitMb",500).coerceIn(100,4000)
 }
