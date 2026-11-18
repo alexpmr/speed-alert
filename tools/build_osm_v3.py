@@ -3,10 +3,20 @@
 Source: Geofabrik Centro-Oeste PBF; © OpenStreetMap contributors, ODbL.
 No inferred speed limits; only explicit numeric maxspeed tags.
 """
-import sys,sqlite3,re,math,pathlib,datetime
+import sys,sqlite3,re,math,pathlib,datetime,argparse
 import osmium
 
-pbf,output=sys.argv[1:3]
+ap=argparse.ArgumentParser(description=__doc__)
+ap.add_argument("pbf");ap.add_argument("output")
+ap.add_argument("--bbox",default="-16.30,-15.35,-48.43,-47.18",
+    help="south,north,west,east; 'none' keeps the whole extract (regional builds)")
+ap.add_argument("--profile",choices=("full","slim"),default="full",
+    help="slim drops residential/service/unclassified/living_street ways that have no speed limit")
+ap.add_argument("--region",default="df",help="region id stored in metadata (df, centro-oeste, sul, sudeste)")
+ap.add_argument("--label",default="Brasília DF e entorno",help="human-readable coverage name")
+ap.add_argument("--min-roads",type=int,default=50000)
+args=ap.parse_args()
+pbf,output=args.pbf,args.output
 target=pathlib.Path(output);target.parent.mkdir(parents=True,exist_ok=True)
 target.unlink(missing_ok=True)
 db=sqlite3.connect(str(target))
@@ -20,9 +30,10 @@ CREATE INDEX cameras_tiles ON cameras(tile_lat,tile_lon);
 CREATE TABLE metadata(k TEXT PRIMARY KEY,v TEXT);
 PRAGMA user_version=3;
 """)
-bounds=(-16.30,-15.35,-48.43,-47.18)
+bounds=None if args.bbox=="none" else tuple(float(x) for x in args.bbox.split(","))
 def nearby(lat,lon):
-    return bounds[0]<=lat<=bounds[1] and bounds[2]<=lon<=bounds[3]
+    return bounds is None or (bounds[0]<=lat<=bounds[1] and bounds[2]<=lon<=bounds[3])
+MINOR={'residential','unclassified','living_street','service'}
 def kmh(text):
     if not text:return None
     m=re.fullmatch(r"(\d{1,3})\s*(km/h|kmh|kph|mph)?",str(text).lower().strip())
@@ -59,6 +70,7 @@ class Builder(osmium.SimpleHandler):
             fwd=kmh(w.tags.get('maxspeed:forward')) or shared
             bwd=kmh(w.tags.get('maxspeed:backward')) or shared
         if not (name or ref or fwd or bwd):return
+        if args.profile=="slim" and highway in MINOR and not (fwd or bwd):return
         try:
             points=[(n.location.lat,n.location.lon) for n in w.nodes]
         except (ValueError,osmium.InvalidLocationError):return
@@ -120,7 +132,7 @@ snapped=len(cams)-onWay
 db.executemany("INSERT INTO cameras VALUES(?,?,?,?,?,?,?)",cams)
 db.executemany("INSERT INTO metadata VALUES(?,?)",[
  ('data_origin','© OpenStreetMap contributors; ODbL 1.0'),
- ('coverage','Brasília DF bounding region; explicit speed data only'),
+ ('coverage',args.label),('region',args.region),('profile',args.profile),
  ('updated_utc',datetime.datetime.now(datetime.timezone.utc).isoformat()),
  ('roads',str(b.count)),('speed_cameras',str(len(cams))),
  ('speed_cameras_snapped',str(snapped)),('speed_cameras_in_osm',str(len(b.cameras)))
@@ -130,7 +142,11 @@ roads=db.execute("SELECT COUNT(*) FROM roads").fetchone()[0]
 speed=db.execute("SELECT COUNT(*) FROM roads WHERE fwd IS NOT NULL OR bwd IS NOT NULL").fetchone()[0]
 named=db.execute("SELECT COUNT(*) FROM roads WHERE name<>'' OR ref<>''").fetchone()[0]
 tiles=db.execute("SELECT COUNT(*) FROM road_tiles").fetchone()[0]
-assert roads>=50000 and tiles>=50000 and speed>=10000,(roads,tiles,speed)
+for k,v in zip(('south','north','west','east'),db.execute(
+        "SELECT MIN(MIN(lat1,lat2)),MAX(MAX(lat1,lat2)),MIN(MIN(lon1,lon2)),MAX(MAX(lon1,lon2)) FROM roads").fetchone()):
+    db.execute("INSERT INTO metadata VALUES(?,?)",("bbox_"+k,repr(v)))
+db.commit()
+assert roads>=args.min_roads and tiles>=args.min_roads and speed>=10000,(roads,tiles,speed)
 assert db.execute("PRAGMA quick_check").fetchone()[0]=="ok"
 assert db.execute("PRAGMA user_version").fetchone()[0]==3
 print(f"OSM V3: {roads} roads, {speed} with maxspeed, {named} named, {len(cams)} cameras ({snapped} snapped from {len(b.cameras)-onWay} off-way), {tiles} tiles",flush=True)

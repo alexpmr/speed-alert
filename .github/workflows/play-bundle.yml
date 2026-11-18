@@ -1,5 +1,5 @@
 name: Build Google Play bundle (AAB)
-# Builds the "play" flavor (no OTA, no REQUEST_INSTALL_PACKAGES, no network) as a signed AAB.
+# Builds the "play" flavor (no OTA, no REQUEST_INSTALL_PACKAGES) as a signed AAB.
 # The signing key here is the Play UPLOAD key; Google re-signs with the app key (Play App Signing).
 # The very first AAB must be uploaded by hand in Play Console. From then on, if the
 # PLAY_SERVICE_ACCOUNT_JSON secret exists, this workflow can upload straight to a test track.
@@ -59,8 +59,8 @@ jobs:
           keytool -list -keystore "$PT2VHF_SIGNING_STORE_FILE" \
             -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" > /dev/null
           echo "PT2VHF_SIGNING_STORE_FILE=$PT2VHF_SIGNING_STORE_FILE" >> "$GITHUB_ENV"
-      - name: Restore pinned offline OSM database (data/osm-db.lock)
-        run: bash scripts/restore_osm_db.sh app/src/main/assets/df_roads_v3.sqlite
+      - name: Restore regional databases into the asset packs (data/osm-regions.lock)
+        run: bash scripts/restore_osm_regions.sh
       - name: Build, lint and sign the Play bundle
         run: gradle :app:bundlePlayRelease :app:lintPlayRelease --no-daemon --stacktrace
       - name: Verify bundle contents and policy-sensitive permissions
@@ -70,10 +70,16 @@ jobs:
           aab=app/build/outputs/bundle/playRelease/app-play-release.aab
           test -s "$aab"
           jarsigner -verify "$aab" | tail -1
-          unzip -l "$aab" | grep base/assets/df_roads_v3.sqlite
+          unzip -l "$aab" > "$RUNNER_TEMP/aab.txt"
+          for r in centro_oeste/assets/osm/centro-oeste sul/assets/osm/sul sudeste/assets/osm/sudeste; do
+            grep "osm_$r.sqlite" "$RUNNER_TEMP/aab.txt"
+          done
+          if grep -E '^.*base/assets/.*\.sqlite' "$RUNNER_TEMP/aab.txt"; then
+            echo "::error::Offline databases must live in asset packs, not in the base module"; exit 5
+          fi
           manifest=app/build/intermediates/merged_manifest/playRelease/processPlayReleaseMainManifest/AndroidManifest.xml
-          if grep -E 'REQUEST_INSTALL_PACKAGES|android.permission.INTERNET' "$manifest"; then
-            echo "::error::Play flavor must not request install or network permissions"; exit 4
+          if grep -E 'REQUEST_INSTALL_PACKAGES' "$manifest"; then
+            echo "::error::Play flavor must not request the install-packages permission"; exit 4
           fi
           grep 'targetSdkVersion="36"' "$manifest"
           mkdir -p dist

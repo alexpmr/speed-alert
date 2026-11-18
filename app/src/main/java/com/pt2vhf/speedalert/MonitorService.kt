@@ -15,19 +15,35 @@ class MonitorService:Service() {
     val roadName:String="Via não identificada",val radarMeters:Double?=null,
     val radarActive:Boolean=false,val muted:Boolean=false,
     val gpsAccuracy:Float=-1f,
-    val lat:Double=Double.NaN,val lon:Double=Double.NaN,val bearing:Float=-1f
+    val lat:Double=Double.NaN,val lon:Double=Double.NaN,val bearing:Float=-1f,
+    val wayId:Long=0L
   )
   companion object {
     const val START="com.pt2vhf.speedalert.START"
     const val STOP="com.pt2vhf.speedalert.STOP"
     const val MUTE="com.pt2vhf.speedalert.MUTE"
     const val UPDATE="com.pt2vhf.speedalert.UPDATE"
+    /** Reopen offline databases after a region was downloaded or removed. */
+    const val RELOAD="com.pt2vhf.speedalert.RELOAD"
     @Volatile var latest:State?=null
   }
   private val handler=Handler(Looper.getMainLooper())
   private val prefs by lazy { AppConfig.prefs(this) }
   private lateinit var locationManager:LocationManager
-  private lateinit var roads:Roads
+  /** Loaded off the main thread: copying a bundled regional database can take seconds. */
+  @Volatile private var roads:Roads?=null
+  private var lastReload=0L
+  private fun loadRoads() {
+    lastReload=SystemClock.elapsedRealtime()
+    Thread {
+      val fresh=Roads(this)
+      handler.post {   // resolve() runs on the main looper: swap and close there
+        val old=roads
+        roads=fresh
+        old?.close()
+      }
+    }.apply { name="pt2vhf-roads";start() }
+  }
   private lateinit var audio:AlarmAudio
   private var running=false
   private var lastFix=0L
@@ -49,7 +65,7 @@ class MonitorService:Service() {
   override fun onCreate() {
     super.onCreate()
     locationManager=getSystemService(LOCATION_SERVICE) as LocationManager
-    roads=Roads(this)
+    loadRoads()
     audio=AlarmAudio(this)
     (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(
       NotificationChannel("speed","PT2VHF velocidade",NotificationManager.IMPORTANCE_LOW))
@@ -60,6 +76,10 @@ class MonitorService:Service() {
       try { locationManager.removeUpdates(listener) } catch(_:Exception){}
       stopForeground(STOP_FOREGROUND_REMOVE);stopSelf()
       latest=null
+      return START_NOT_STICKY
+    }
+    if(intent?.action==RELOAD) {
+      loadRoads()
       return START_NOT_STICKY
     }
     if(intent?.action==MUTE) {
@@ -89,8 +109,13 @@ class MonitorService:Service() {
     }
     lastFix=SystemClock.elapsedRealtime()
     val speed=loc.speed.toDouble()*3.6
-    val selected=if(AppConfig.offline(prefs)) roads.resolve(loc,AppConfig.radarRange(prefs).toDouble())
-      else Roads.Result(null,"BASE OFFLINE DESATIVADA")
+    val loaded=roads
+    val selected=if(!AppConfig.offline(prefs)) Roads.Result(null,"BASE OFFLINE DESATIVADA")
+      else loaded?.resolve(loc,AppConfig.radarRange(prefs).toDouble())
+        ?: Roads.Result(null,"CARREGANDO BASE OFFLINE")
+    // A region may finish downloading (Play fast-follow / on-demand) while we are running.
+    if(loaded!=null && (selected.source.startsWith("REGIÃO SEM BASE") || selected.source.startsWith("BASE OFFLINE INDISPONÍVEL")) &&
+      SystemClock.elapsedRealtime()-lastReload>60_000L) loadRoads()
     val max=if(AppConfig.manual(prefs)) AppConfig.manualLimit(prefs).toDouble() else selected.limit
     val excess=max!=null && speed>max+AppConfig.tolerance(prefs)
     val radarExcess=selected.radarDistance!=null && selected.radarLimit!=null &&
@@ -106,7 +131,7 @@ class MonitorService:Service() {
       if(AppConfig.manual(prefs)) "MANUAL • "+selected.source else selected.source,
       excess || radarExcess,selected.roadName,selected.radarDistance,
       radarExcess,AppConfig.muted(prefs),loc.accuracy,
-      loc.latitude,loc.longitude,if(loc.hasBearing())loc.bearing else -1f))
+      loc.latitude,loc.longitude,if(loc.hasBearing())loc.bearing else -1f,selected.wayId))
     approachChime(selected,excess || radarExcess)
   }
   /** One short chime per camera when it first comes within the warning range. */
@@ -153,6 +178,7 @@ class MonitorService:Service() {
     running=false;handler.removeCallbacks(checkStale);audio.stop()
     try { locationManager.removeUpdates(listener) } catch(_:Exception){}
     audio.close();latest=null
+    roads?.close();roads=null
     super.onDestroy()
   }
   override fun onBind(intent:Intent?):IBinder?=null

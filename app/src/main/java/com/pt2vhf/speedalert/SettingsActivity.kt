@@ -15,6 +15,7 @@ class SettingsActivity : Activity() {
   private lateinit var beepMs: EditText
   private lateinit var pauseMs: EditText
   private val navy = Color.rgb(12,20,29)
+  private var regionsCleanup:()->Unit={}
   private val exportRequest=7031
   private val importRequest=7032
   private val white = Color.WHITE
@@ -84,8 +85,8 @@ class SettingsActivity : Activity() {
     seek(root,"Distância para aviso de radar","radarRange",300,1000," m")
     toggle(root,"Bipe curto ao se aproximar de radar","radarChime",true)
     add(root,label("Toca uma vez por radar ao entrar na distância acima, mesmo dentro do limite. Com excesso de velocidade perto do radar, toca o tom contínuo.",12f,Color.LTGRAY))
-    toggle(root,"Mostrar coordenadas GPS na tela","showCoords",true)
-    add(root,label("Linha discreta abaixo da via. Toque para copiar; use \"Relatar erro\" para enviar local, via e limite exibido ao desenvolvedor.",12f,Color.LTGRAY))
+    toggle(root,"Mostrar coordenadas GPS e \"Marcar erro\" na tela","showCoords",true)
+    add(root,label("Linha discreta abaixo da via. Toque nas coordenadas para copiar; \"Marcar erro\" guarda o local para relatar depois.",12f,Color.LTGRAY))
     add(root,label("ALARME SONORO",18f,green))
     seek(root,"Volume relativo","volume",80,100,"%")
     add(root,label("Tipo de alarme",14f))
@@ -119,8 +120,16 @@ class SettingsActivity : Activity() {
       toggle(root,"Participar das estatísticas anônimas de instalações no site","shareStats",true)
       add(root,label("Quando habilitado, a consulta envia um identificador aleatório persistente e a versão. A atividade é pseudônima, não plenamente anônima. Não são enviados GPS, trajeto nem velocidade. O país pode ser estimado pelo servidor. Você pode desativar a opção.",12f,Color.LTGRAY))
     } else {
-      add(root,label("As atualizações são entregues pelo Google Play. Esta versão não envia dados pela Internet: GPS, limites e alarmes funcionam totalmente no aparelho.",12f,Color.LTGRAY))
+      add(root,label("As atualizações são entregues pelo Google Play. GPS, limites e alarmes funcionam totalmente no aparelho; só os relatos de erro que você confirmar são enviados (ao OpenStreetMap).",12f,Color.LTGRAY))
     }
+    add(root,label("RELATOS DE ERRO",18f,green))
+    add(root,label("Erros marcados com \"Marcar erro\" na tela principal. Complete e envie ao OpenStreetMap com o veículo parado.",12f,Color.LTGRAY))
+    add(root,Button(this).apply {
+      text="RELATOS DE ERRO (${Reports.pending(this@SettingsActivity)} pendentes)"
+      setOnClickListener { startActivity(Intent(this@SettingsActivity,ReportsActivity::class.java)) }
+    })
+    regionsCleanup=RegionPacks.addSettingsSection(this,root,
+      { add(root,label(it,18f,green)) },{ add(root,label(it,12f,Color.LTGRAY)) })
     add(root,label("CÓPIA DE SEGURANÇA",18f,green))
     add(root,label("Exporte as configurações para um arquivo e importe-o em outro aparelho ou após reinstalar. Por segurança, o identificador das estatísticas e permissões não são exportados.",12f,Color.LTGRAY))
     add(root,Button(this).apply {
@@ -187,4 +196,5 @@ class SettingsActivity : Activity() {
     }
   }
   override fun onPause() {save();super.onPause()}
+  override fun onDestroy() {regionsCleanup();super.onDestroy()}
 }

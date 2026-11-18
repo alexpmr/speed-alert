@@ -5,6 +5,10 @@ on:
     paths:
       - '.github/workflows/test-release-signing.yml'
       - 'app/src/main/java/com/pt2vhf/speedalert/MainActivity.kt'
+      - 'app/build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'osm_*/**'
+      - 'app/src/play/**'
   workflow_dispatch:
 permissions:
   contents: read
@@ -24,7 +28,9 @@ jobs:
       - uses: android-actions/setup-android@v4
       - run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
       - name: Restore pinned offline OSM database (data/osm-db.lock)
-        run: bash scripts/restore_osm_db.sh app/src/main/assets/df_roads_v3.sqlite
+        run: bash scripts/restore_osm_db.sh app/src/github/assets/df_roads_v3.sqlite
+      - name: Restore regional asset-pack databases (if already pinned)
+        run: bash scripts/restore_osm_regions.sh --allow-missing
       - name: Smoke-test release Gradle signing and lint using ephemeral QA key
         shell: bash
         run: |

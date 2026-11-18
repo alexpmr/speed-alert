@@ -6,3 +6,6 @@ local.properties
 *.keystore
 # Offline OSM database is restored by CI from a SHA-256-pinned release asset
 app/src/main/assets/df_roads_v3.sqlite
+app/src/github/assets/df_roads_v3.sqlite
+osm_*/src/main/assets/osm/*.sqlite
+osm_*/build/

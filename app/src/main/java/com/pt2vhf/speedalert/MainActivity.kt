@@ -203,10 +203,10 @@ class MainActivity:Activity() {
             setOnClickListener {copyCoordinates()}
         }
         coordRow.addView(coordText,LinearLayout.LayoutParams(0,-2,1f))
-        coordRow.addView(label("Relatar erro",11f,Color.rgb(94,214,156),true).apply {
+        coordRow.addView(label("Marcar erro",11f,Color.rgb(94,214,156),true).apply {
             setPadding(dp(8),dp(6),0,dp(6))
-            contentDescription="Relatar erro de limite ou radar neste local"
-            setOnClickListener {shareReport()}
+            contentDescription="Marcar erro de limite ou radar neste local"
+            setOnClickListener {markError()}
         })
         add(labels,coordRow,-2,2)
         row.addView(labels,LinearLayout.LayoutParams(0,-2,1f))
@@ -221,32 +221,19 @@ class MainActivity:Activity() {
         clip.setPrimaryClip(android.content.ClipData.newPlainText("Coordenadas",c))
         if(Build.VERSION.SDK_INT<33)Toast.makeText(this,"Coordenadas copiadas: $c",Toast.LENGTH_SHORT).show()
     }
-    /** Plain-text report shared through any app the user picks; nothing is sent by this app. */
-    private fun shareReport() {
-        val c=coordinates()
-        val version=try{packageManager.getPackageInfo(packageName,0).versionName?:"?"}catch(_:Exception){"?"}
-        val text=buildString {
-            appendLine("PT2VHF Speed Alert — relato de erro")
-            appendLine("App: v$version (${if(BuildConfig.OTA)"site" else "Google Play"}) • base OSM: ${Roads.dataVersion(this@MainActivity)}")
-            if(c!=null) {
-                appendLine("Local: $c"+
-                    (if(fixAccuracy>=0)" (±${fixAccuracy.roundToInt()} m)" else "")+
-                    (if(fixBearing>=0)" • direção ${fixBearing.roundToInt()}°" else ""))
-                appendLine("Mapa: https://www.openstreetmap.org/?mlat=${"%.5f".format(java.util.Locale.US,fixLat)}&mlon=${"%.5f".format(java.util.Locale.US,fixLon)}#map=18/${"%.5f".format(java.util.Locale.US,fixLat)}/${"%.5f".format(java.util.Locale.US,fixLon)}")
-            } else appendLine("Local: GPS indisponível")
-            appendLine("Via: ${lastRoad.ifBlank{"—"}}")
-            appendLine("Limite mostrado: ${if(limit>0)limit.roundToInt().toString()+" km/h" else "—"}")
-            appendLine("Velocidade: ${if(kmh>=0)kmh.roundToInt().toString()+" km/h" else "—"}")
-            appendLine("Radar à frente: ${if(lastRadar>=0)lastRadar.roundToInt().toString()+" m" else "nenhum"}")
-            appendLine("Status: $lastStatus • $lastSource")
-            appendLine()
-            append("Limite/radar correto na placa: ")
+    /**
+     * One tap, safe while driving: saves position, heading, road and what the app showed.
+     * The driver completes and publishes it later, stopped (Configurações → Relatos de erro).
+     */
+    private fun markError() {
+        val r=Reports.mark(this)
+        if(r==null) {
+            Toast.makeText(this,"Sem posição GPS válida para marcar.",Toast.LENGTH_SHORT).show()
+            return
         }
-        startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
-            type="text/plain"
-            putExtra(Intent.EXTRA_SUBJECT,"PT2VHF Speed Alert — erro de limite/radar")
-            putExtra(Intent.EXTRA_TEXT,text)
-        },"Relatar erro"))
+        if(kmh in 0.0..5.0) startActivity(Intent(this,ReportsActivity::class.java))
+        else Toast.makeText(this,"Erro marcado. Complete com o veículo parado em Configurações → Relatos de erro.",
+            Toast.LENGTH_LONG).show()
     }
     private fun dashboardStats():View {
         val box=LinearLayout(this).apply {
