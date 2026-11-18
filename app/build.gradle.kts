@@ -7,8 +7,8 @@ android {
         applicationId="com.pt2vhf.speedalert"
         minSdk=26
         targetSdk=36
-        versionCode=106
-        versionName="1.0.6"
+        versionCode=107
+        versionName="1.0.7"
     }
     buildFeatures { buildConfig=true }
     // github: APK distributed by pt2vhf.com/GitHub, with the site OTA updater and opt-in stats.

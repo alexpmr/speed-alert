@@ -90,12 +90,40 @@ b.flush()
 cams=[(cid,wayid,*b.cameras[cid],math.floor(b.cameras[cid][0]*1000),
        math.floor(b.cameras[cid][1]*1000))
       for cid,wayid in b.cameraWays.items() if wayid is not None and cid in b.cameras]
+onWay=len(cams)
+# Many Brazilian cameras are mapped as a node beside the carriageway (or on a
+# junction node shared by two ways). Attach those to the nearest road segment
+# within SNAP_METERS so the app, which only matches cameras on the current way,
+# can still warn about them.
+SNAP_METERS=25.0
+def nearestWay(lat,lon):
+    tl=math.floor(lat*1000);tn=math.floor(lon*1000)
+    fx=111320.0*math.cos(math.radians(lat))
+    best=None
+    for la1,lo1,la2,lo2,wayid in db.execute(
+        "SELECT r.lat1,r.lon1,r.lat2,r.lon2,r.wayid FROM road_tiles t JOIN roads r ON t.road_id=r.id "
+        "WHERE t.tile_lat BETWEEN ? AND ? AND t.tile_lon BETWEEN ? AND ?",(tl-1,tl+1,tn-1,tn+1)):
+        x1=(lo1-lon)*fx;y1=(la1-lat)*111320.0;x2=(lo2-lon)*fx;y2=(la2-lat)*111320.0
+        dx=x2-x1;dy=y2-y1;n=dx*dx+dy*dy
+        if n<1.0:continue
+        t=max(0.0,min(1.0,-(x1*dx+y1*dy)/n))
+        dist=math.hypot(x1+t*dx,y1+t*dy)
+        if dist<=SNAP_METERS and (best is None or dist<best[0]):best=(dist,wayid)
+    return best[1] if best else None
+matched={c[0] for c in cams}
+for cid,(lat,lon,speed) in b.cameras.items():
+    if cid in matched:continue
+    wayid=nearestWay(lat,lon)
+    if wayid is not None:
+        cams.append((cid,wayid,lat,lon,speed,math.floor(lat*1000),math.floor(lon*1000)))
+snapped=len(cams)-onWay
 db.executemany("INSERT INTO cameras VALUES(?,?,?,?,?,?,?)",cams)
 db.executemany("INSERT INTO metadata VALUES(?,?)",[
  ('data_origin','© OpenStreetMap contributors; ODbL 1.0'),
  ('coverage','Brasília DF bounding region; explicit speed data only'),
  ('updated_utc',datetime.datetime.now(datetime.timezone.utc).isoformat()),
- ('roads',str(b.count)),('speed_cameras',str(len(cams)))
+ ('roads',str(b.count)),('speed_cameras',str(len(cams))),
+ ('speed_cameras_snapped',str(snapped)),('speed_cameras_in_osm',str(len(b.cameras)))
 ])
 db.commit()
 roads=db.execute("SELECT COUNT(*) FROM roads").fetchone()[0]
@@ -105,6 +133,6 @@ tiles=db.execute("SELECT COUNT(*) FROM road_tiles").fetchone()[0]
 assert roads>=50000 and tiles>=50000 and speed>=10000,(roads,tiles,speed)
 assert db.execute("PRAGMA quick_check").fetchone()[0]=="ok"
 assert db.execute("PRAGMA user_version").fetchone()[0]==3
-print(f"OSM V3: {roads} roads, {speed} with maxspeed, {named} named, {len(cams)} matched cameras, {tiles} tiles",flush=True)
+print(f"OSM V3: {roads} roads, {speed} with maxspeed, {named} named, {len(cams)} cameras ({snapped} snapped from {len(b.cameras)-onWay} off-way), {tiles} tiles",flush=True)
 db.execute("VACUUM")
 db.close()

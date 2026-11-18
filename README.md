@@ -47,3 +47,9 @@ O novo APK com certificado de release também será incompatível com as betas h
 - compileSdk/targetSdk 36 (exigência do Play desde 31/08/2026), com telas edge-to-edge que respeitam as barras do sistema.
 - AAB: workflow manual **Build Google Play bundle (AAB)**. Passo a passo do Console, Segurança dos dados, declaração do serviço em primeiro plano e regra dos 12 testadores em [docs/GOOGLE_PLAY.md](docs/GOOGLE_PLAY.md). Política de privacidade: [docs/PRIVACY_POLICY.md](docs/PRIVACY_POLICY.md).
 - Compilação local: JDK 17+, Gradle 8.14.3, SDK 36 (`gradle :app:bundlePlayRelease` ou `:app:assembleGithubRelease`).
+
+## Base offline OSM
+- A base embarcada no Android e no iOS é definida em `data/osm-db.lock` (URL + SHA-256) e restaurada por `scripts/restore_osm_db.sh`.
+- O workflow **Rebuild offline OSM database** (manual e mensal) baixa o extrato Geofabrik atual, gera a base com `tools/build_osm_v3.py`, compara com a atual, publica uma pré-release `osm-db-*` e abre um PR atualizando o lock. Depois do merge, gere uma nova versão do app.
+- Radares mapeados ao lado da pista (até 25 m) passam a ser associados à via mais próxima.
+- Limites errados devem ser corrigidos no OpenStreetMap (tag `maxspeed`); a correção entra no app na próxima regeneração.

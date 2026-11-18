@@ -4,6 +4,8 @@ on:
     branches: [main]
     paths:
       - 'ios/**'
+      - 'data/osm-db.lock'
+      - 'scripts/restore_osm_db.sh'
       - '.github/workflows/ios-simulator.yml'
   workflow_dispatch:
 permissions:
