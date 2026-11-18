@@ -59,8 +59,6 @@ jobs:
           keytool -list -keystore "$PT2VHF_SIGNING_STORE_FILE" \
             -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" > /dev/null
           echo "PT2VHF_SIGNING_STORE_FILE=$PT2VHF_SIGNING_STORE_FILE" >> "$GITHUB_ENV"
-      - name: Restore regional databases into the asset packs (data/osm-regions.lock)
-        run: bash scripts/restore_osm_regions.sh
       - name: Build, lint and sign the Play bundle
         run: gradle :app:bundlePlayRelease :app:lintPlayRelease --no-daemon --stacktrace
       - name: Verify bundle contents and policy-sensitive permissions
@@ -70,12 +68,9 @@ jobs:
           aab=app/build/outputs/bundle/playRelease/app-play-release.aab
           test -s "$aab"
           jarsigner -verify "$aab" | tail -1
-          unzip -l "$aab" > "$RUNNER_TEMP/aab.txt"
-          for r in centro_oeste/assets/osm/centro-oeste sul/assets/osm/sul sudeste/assets/osm/sudeste; do
-            grep "osm_$r.sqlite" "$RUNNER_TEMP/aab.txt"
-          done
-          if grep -E '^.*base/assets/.*\.sqlite' "$RUNNER_TEMP/aab.txt"; then
-            echo "::error::Offline databases must live in asset packs, not in the base module"; exit 5
+          # Map data is downloaded by the app as tiles (TileStore); the bundle must not carry databases.
+          if unzip -l "$aab" | grep -E '\.sqlite$'; then
+            echo "::error::Unexpected offline database inside the Play bundle"; exit 5
           fi
           manifest=app/build/intermediates/merged_manifest/playRelease/processPlayReleaseMainManifest/AndroidManifest.xml
           if grep -E 'REQUEST_INSTALL_PACKAGES' "$manifest"; then

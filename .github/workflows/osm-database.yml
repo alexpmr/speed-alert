@@ -1,10 +1,10 @@
 name: Rebuild offline OSM database
 # Builds, from current OpenStreetMap extracts:
-#   - df_roads_v3.sqlite     (DF and surroundings; github APK and iOS)  -> data/osm-db.lock
-#   - centro-oeste/sul/sudeste.sqlite (Google Play asset packs)       -> data/osm-regions.lock
-# compares them with the databases currently shipped, publishes them as one pre-release
-# and opens a pull request updating both lock files. Nothing reaches users until that PR is
-# merged and a new app version is built.
+#   - df_roads_v3.sqlite (DF and surroundings; bundled in the site APK and iOS) -> data/osm-db.lock
+#   - 1x1 degree tiles of Centro-Oeste, Sul and Sudeste (downloaded by the app) -> data/tiles.json
+# publishes them as one pre-release and opens a pull request updating both files.
+# Merging that PR updates the tiles on every installed app (no new app version needed);
+# the DF database reaches the site APK / iOS with their next build.
 on:
   workflow_dispatch:
   schedule:
@@ -52,75 +52,79 @@ jobs:
   publish:
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          path: dist
+          path: regions
           merge-multiple: true
-      - name: Restore the databases currently shipped
+      - name: Build tiles
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/current"
-          bash scripts/restore_osm_db.sh "$RUNNER_TEMP/current/df_roads_v3.sqlite"
-          bash scripts/restore_osm_regions.sh --allow-missing
-          for r in centro-oeste sul sudeste; do
-            f="osm_${r//-/_}/src/main/assets/osm/$r.sqlite"
-            if [ -f "$f" ]; then mv "$f" "$RUNNER_TEMP/current/$r.sqlite"; fi
-          done
-      - name: Validate and compare
+          tag="osm-tiles-$(date -u +%Y%m%d-%H%M)"
+          python3 -I tools/build_tiles.py dist "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/" \
+            regions/centro-oeste.sqlite regions/sul.sqlite regions/sudeste.sqlite
+          echo "TAG=$tag" >> "$GITHUB_ENV"
+          mv regions/df_roads_v3.sqlite dist/
+          n=$(ls dist/*.sqlite.gz | wc -l)
+          [ "$n" -ge 100 ] && [ "$n" -le 990 ] || { echo "::error::Unexpected tile count $n (release asset limit is 1000)"; exit 3; }
+      - name: Validate and compare with what is shipped
         shell: bash
         run: |
           set -euo pipefail
-          python3 -I - "$RUNNER_TEMP/current" dist > dist/REPORT.md <<'PY'
-          import sqlite3,sys,os
-          cur,new=sys.argv[1:3]
+          bash scripts/restore_osm_db.sh "$RUNNER_TEMP/df_current.sqlite"
+          python3 -I - "$RUNNER_TEMP/df_current.sqlite" dist/df_roads_v3.sqlite data/tiles.json dist/tiles.json > dist/REPORT.md <<'PY'
+          import sqlite3,sys,json,os
+          cur_df,new_df,cur_m,new_m=sys.argv[1:5]
           def stats(p):
               d=sqlite3.connect(p)
               assert d.execute("PRAGMA quick_check").fetchone()[0]=="ok"
               assert d.execute("PRAGMA user_version").fetchone()[0]==3
               q=lambda s:d.execute(s).fetchone()[0]
-              return {"MB":os.path.getsize(p)//1048576,
-                      "trechos":q("SELECT COUNT(*) FROM roads"),
+              return {"trechos":q("SELECT COUNT(*) FROM roads"),
                       "com limite":q("SELECT COUNT(*) FROM roads WHERE fwd IS NOT NULL OR bwd IS NOT NULL"),
                       "radares":q("SELECT COUNT(*) FROM cameras")}
-          print("| base | métrica | atual | nova |\n|---|---|---|---|")
-          for name in ("df_roads_v3","centro-oeste","sul","sudeste"):
-              n=stats(f"{new}/{name}.sqlite")
-              path=f"{cur}/{name}.sqlite"
-              o=stats(path) if os.path.exists(path) else None
-              for k in n: print(f"| {name} | {k} | {o[k] if o else '—'} | {n[k]} |")
-              if o:   # refuse a database that shrank sharply: usually a truncated/broken extract
-                  for k in ("trechos","com limite"):
-                      assert n[k]>=0.9*o[k],f"{name}: {k} dropped from {o[k]} to {n[k]}"
+          o,n=stats(cur_df),stats(new_df)
+          print("### Base DF (APK do site / iOS)\n| métrica | atual | nova |\n|---|---|---|")
+          for k in n: print(f"| {k} | {o[k]} | {n[k]} |")
+          for k in ("trechos","com limite"): assert n[k]>=0.9*o[k],f"DF {k}: {o[k]} -> {n[k]}"
+          new=json.load(open(new_m))["tiles"]
+          old=json.load(open(cur_m))["tiles"] if os.path.exists(cur_m) else {}
+          tot=lambda t,k:sum(v[k] for v in t.values())
+          print("\n### Blocos (Centro-Oeste, Sul, Sudeste)\n| métrica | atual | nova |\n|---|---|---|")
+          print(f"| blocos | {len(old) or '—'} | {len(new)} |")
+          for k in ("roads","cameras","gz_bytes"):
+              print(f"| {k} | {tot(old,k) if old else '—'} | {tot(new,k)} |")
+          if old:
+              assert len(new)>=0.9*len(old) and tot(new,"roads")>=0.9*tot(old,"roads"),"tiles shrank sharply"
+          big=max(new.items(),key=lambda kv:kv[1]["gz_bytes"])
+          print(f"\nMaior bloco: {big[0]} ({big[1]['gz_bytes']//1048576} MB comprimido).")
           PY
           cat dist/REPORT.md | tee -a "$GITHUB_STEP_SUMMARY"
-          (cd dist && sha256sum *.sqlite > SHA256SUMS.txt)
-      - name: Publish pre-release and open pull request updating the lock files
+          (cd dist && sha256sum df_roads_v3.sqlite > SHA256SUMS.txt)
+      - name: Publish pre-release and open pull request
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          tag="osm-db-$(date -u +%Y%m%d-%H%M)"
-          gh release create "$tag" dist/*.sqlite dist/SHA256SUMS.txt \
+          gh release create "$TAG" dist/*.sqlite.gz dist/df_roads_v3.sqlite dist/tiles.json dist/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --latest=false \
-            --title "Bases offline OSM $tag" --notes-file dist/REPORT.md
-          dl="https://github.com/$GITHUB_REPOSITORY/releases/download/$tag"
-          sha() { grep " $1\$" dist/SHA256SUMS.txt | cut -d' ' -f1; }
-          sed -i "s#^URL=.*#URL=$dl/df_roads_v3.sqlite#; s#^SHA256=.*#SHA256=$(sha df_roads_v3.sqlite)#" data/osm-db.lock
-          sed -i '/^[a-z-]\+ https:/d' data/osm-regions.lock
-          for r in centro-oeste sul sudeste; do echo "$r $dl/$r.sqlite $(sha $r.sqlite)" >> data/osm-regions.lock; done
-          branch="osm-db/$tag"
+            --title "Bases offline OSM $TAG" --notes-file dist/REPORT.md
+          dl="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"
+          sed -i "s#^URL=.*#URL=$dl/df_roads_v3.sqlite#; s#^SHA256=.*#SHA256=$(cut -d' ' -f1 dist/SHA256SUMS.txt)#" data/osm-db.lock
+          cp dist/tiles.json data/tiles.json
+          branch="osm-db/$TAG"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$branch"
-          git commit -am "data: offline OSM databases $tag"
+          git add data/osm-db.lock data/tiles.json
+          git commit -m "data: offline OSM tiles and DF database $TAG"
           git push origin "$branch"
           if ! gh pr create --repo "$GITHUB_REPOSITORY" --head "$branch" --base "${GITHUB_REF_NAME}" \
-              --title "Atualizar bases offline OSM ($tag)" \
-              --body "$(printf 'Bases regeneradas a partir dos extratos OSM atuais (Geofabrik ou espelho openstreetmap.fr).\n\n%s\n\nDepois do merge, gere uma nova versão do app (aumente o versionCode).' "$(cat dist/REPORT.md)")"; then
+              --title "Atualizar bases offline OSM ($TAG)" \
+              --body "$(printf 'Bases regeneradas a partir dos extratos OSM atuais.\n\n%s\n\nAo fazer o merge, os apps instalados passam a baixar os blocos novos (o índice data/tiles.json é lido pelo app). A base do DF entra no APK do site e no iOS na próxima versão.' "$(cat dist/REPORT.md)")"; then
             echo "::warning::Could not open the PR (enable 'Allow GitHub Actions to create pull requests' in Settings → Actions). Branch $branch was pushed; open the PR manually."
           fi

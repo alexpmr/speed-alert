@@ -9,11 +9,11 @@ import org.json.JSONObject
  */
 object SettingsBackup {
     private val booleans = listOf("keepScreenOn","offline","warnUnknown","manual",
-        "autoUpdates","shareStats","muted","radarChime","showCoords")
+        "autoUpdates","shareStats","muted","radarChime","showCoords","tilesWifiOnly")
     private val ranges = mapOf(
         "tolerance" to (0..20), "radarRange" to (100..1000),
         "volume" to (0..100), "manualLimit" to (10..160),
-        "beepMs" to (100..1000), "pauseMs" to (100..2000)
+        "beepMs" to (100..1000), "pauseMs" to (100..2000), "tileLimitMb" to (100..4000)
     )
     private val soundModes = setOf("BIPES","DUPLO","TRIPLO","SIRENE","SUAVE","CONTINUO")
 

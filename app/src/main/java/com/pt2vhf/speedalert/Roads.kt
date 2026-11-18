@@ -30,14 +30,14 @@ class Roads(context:Context) {
     @Volatile private var summary:String="?"
     fun regionLabel(id:String)=when(id) {
       "centro-oeste"->"Centro-Oeste"; "sul"->"Sul"; "sudeste"->"Sudeste"
-      "df","df_roads_v3"->"DF e entorno"; else->id }
+      "df","df_roads_v3"->"DF e entorno"; else->"bloco "+id }
     /** Build date(s) of the loaded offline databases, for bug reports. */
     fun dataVersion(@Suppress("UNUSED_PARAMETER") context:Context):String=summary
 
     /**
-     * Databases bundled as APK assets (github: df_roads_v3.sqlite; play: install-time pack
-     * osm/<region>.sqlite) are copied once per app version into filesDir/osm, so an app update always
-     * replaces older data. Files delivered elsewhere (Play on-demand packs) are opened in place.
+     * Databases bundled as APK assets (github: df_roads_v3.sqlite) are copied once per app version
+     * into filesDir/osm, so an app update always replaces older data. Downloaded tiles
+     * (TileStore) are opened in place.
      */
     fun sources(context:Context):List<Pair<String,File>> {
       val app=context.applicationContext
@@ -68,7 +68,7 @@ class Roads(context:Context) {
       }
       // Remove the pre-1.0.7 single-file copy.
       File(app.filesDir,"df_roads_v3.sqlite").delete()
-      out.addAll(RegionPacks.installedFiles(app))
+      out.addAll(TileStore.files(app))
       return out
     }
   }
