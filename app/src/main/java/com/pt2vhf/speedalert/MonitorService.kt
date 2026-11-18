@@ -14,7 +14,8 @@ class MonitorService:Service() {
     val speed:Double,val limit:Double,val status:String,val source:String,val alarm:Boolean,
     val roadName:String="Via não identificada",val radarMeters:Double?=null,
     val radarActive:Boolean=false,val muted:Boolean=false,
-    val gpsAccuracy:Float=-1f
+    val gpsAccuracy:Float=-1f,
+    val lat:Double=Double.NaN,val lon:Double=Double.NaN,val bearing:Float=-1f
   )
   companion object {
     const val START="com.pt2vhf.speedalert.START"
@@ -30,6 +31,8 @@ class MonitorService:Service() {
   private lateinit var audio:AlarmAudio
   private var running=false
   private var lastFix=0L
+  private var lastChimeKey:String?=null
+  private var lastChimeAt=0L
   private val checkStale=object:Runnable {
     override fun run() {
       if(running && SystemClock.elapsedRealtime()-lastFix>5000L)
@@ -81,7 +84,8 @@ class MonitorService:Service() {
     val age=(SystemClock.elapsedRealtimeNanos()-loc.elapsedRealtimeNanos)/1000000L
     if(age<0 || age>4500 || !loc.hasSpeed() || !loc.hasAccuracy() || loc.accuracy>50f ||
       (Build.VERSION.SDK_INT>=26 && loc.hasSpeedAccuracy() && loc.speedAccuracyMetersPerSecond>4f)) {
-      publish(State(-1.0,-1.0,"GPS IMPRECISO","--",false));return
+      publish(State(-1.0,-1.0,"GPS IMPRECISO","--",false,gpsAccuracy=if(loc.hasAccuracy())loc.accuracy else -1f,
+        lat=loc.latitude,lon=loc.longitude,bearing=if(loc.hasBearing())loc.bearing else -1f));return
     }
     lastFix=SystemClock.elapsedRealtime()
     val speed=loc.speed.toDouble()*3.6
@@ -101,7 +105,21 @@ class MonitorService:Service() {
     publish(State(speed,max?:-1.0,message,
       if(AppConfig.manual(prefs)) "MANUAL • "+selected.source else selected.source,
       excess || radarExcess,selected.roadName,selected.radarDistance,
-      radarExcess,AppConfig.muted(prefs),loc.accuracy))
+      radarExcess,AppConfig.muted(prefs),loc.accuracy,
+      loc.latitude,loc.longitude,if(loc.hasBearing())loc.bearing else -1f))
+    approachChime(selected,excess || radarExcess)
+  }
+  /** One short chime per camera when it first comes within the warning range. */
+  private fun approachChime(selected:Roads.Result,alarming:Boolean) {
+    val key=selected.radarKey?:return
+    val distance=selected.radarDistance?:return
+    if(distance>AppConfig.radarRange(prefs))return
+    val now=SystemClock.elapsedRealtime()
+    if(key==lastChimeKey && now-lastChimeAt<5*60_000L)return
+    lastChimeKey=key
+    lastChimeAt=now
+    if(!alarming && AppConfig.radarChime(prefs) && !AppConfig.muted(prefs))
+      audio.chime(AppConfig.volume(prefs))
   }
   private fun publish(s:State) {
     latest=s
@@ -114,6 +132,7 @@ class MonitorService:Service() {
       putExtra("road",s.roadName);putExtra("radar",s.radarMeters?:-1.0)
       putExtra("radarActive",s.radarActive);putExtra("muted",s.muted)
       putExtra("accuracy",s.gpsAccuracy)
+      putExtra("lat",s.lat);putExtra("lon",s.lon);putExtra("bearing",s.bearing)
     })
     val speed=if(s.speed>=0) String.format(Locale.US,"%.1f km/h",s.speed) else "GPS indisponível"
     try {

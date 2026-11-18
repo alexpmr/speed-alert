@@ -82,6 +82,10 @@ class SettingsActivity : Activity() {
     manualLimit.isEnabled=useManual.isChecked
     seek(root,"Tolerância de velocidade","tolerance",0,20," km/h")
     seek(root,"Distância para aviso de radar","radarRange",300,1000," m")
+    toggle(root,"Bipe curto ao se aproximar de radar","radarChime",true)
+    add(root,label("Toca uma vez por radar ao entrar na distância acima, mesmo dentro do limite. Com excesso de velocidade perto do radar, toca o tom contínuo.",12f,Color.LTGRAY))
+    toggle(root,"Mostrar coordenadas GPS na tela","showCoords",true)
+    add(root,label("Linha discreta abaixo da via. Toque para copiar; use \"Relatar erro\" para enviar local, via e limite exibido ao desenvolvedor.",12f,Color.LTGRAY))
     add(root,label("ALARME SONORO",18f,green))
     seek(root,"Volume relativo","volume",80,100,"%")
     add(root,label("Tipo de alarme",14f))

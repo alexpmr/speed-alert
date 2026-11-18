@@ -53,3 +53,9 @@ O novo APK com certificado de release também será incompatível com as betas h
 - O workflow **Rebuild offline OSM database** (manual e mensal) baixa o extrato Geofabrik atual, gera a base com `tools/build_osm_v3.py`, compara com a atual, publica uma pré-release `osm-db-*` e abre um PR atualizando o lock. Depois do merge, gere uma nova versão do app.
 - Radares mapeados ao lado da pista (até 25 m) passam a ser associados à via mais próxima.
 - Limites errados devem ser corrigidos no OpenStreetMap (tag `maxspeed`); a correção entra no app na próxima regeneração.
+
+## 1.0.7 — relatos de erro, radar e atualizações
+- Linha discreta com coordenadas GPS, precisão e direção abaixo da via. Toque para copiar; **Relatar erro** compartilha local, link do mapa, via, limite exibido, versão do app e da base. Nada é enviado pelo próprio app.
+- Bipe curto, uma vez por radar, ao entrar na distância de aviso, mesmo dentro do limite. O tom contínuo de excesso perto do radar continua igual, e o bipe respeita o Silenciar.
+- Versão Google Play: aviso de atualização do próprio Play (flexível, reinício só com o veículo parado).
+- Opções novas em Configurações: "Bipe curto ao se aproximar de radar" e "Mostrar coordenadas GPS na tela".

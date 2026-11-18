@@ -19,4 +19,6 @@ object AppConfig {
   fun shareStats(p: SharedPreferences) = p.getBoolean("shareStats",true)
   fun radarRange(p: SharedPreferences) = p.getInt("radarRange",300).coerceIn(100,1000)
   fun autoUpdates(p: SharedPreferences) = p.getBoolean("autoUpdates",true)
+  fun radarChime(p: SharedPreferences) = p.getBoolean("radarChime",true)
+  fun showCoords(p: SharedPreferences) = p.getBoolean("showCoords",true)
 }

@@ -47,6 +47,16 @@ class MainActivity:Activity() {
     private lateinit var gpsBars:GpsBarsView
     private lateinit var muteButton:LinearLayout
     private lateinit var muteLabel:TextView
+    private lateinit var coordRow:LinearLayout
+    private lateinit var coordText:TextView
+    private var fixLat=Double.NaN
+    private var fixLon=Double.NaN
+    private var fixBearing=-1f
+    private var fixAccuracy=-1f
+    private var lastStatus=""
+    private var lastSource=""
+    private var lastRoad=""
+    private var lastRadar=-1.0
     private var kmh=-1.0
     private var limit=-1.0
     private var excessive=false
@@ -72,7 +82,10 @@ class MainActivity:Activity() {
                 intent.getDoubleExtra("radar",-1.0),
                 intent.getBooleanExtra("radarActive",false),
                 intent.getBooleanExtra("muted",false),
-                intent.getFloatExtra("accuracy",-1f))
+                intent.getFloatExtra("accuracy",-1f),
+                intent.getDoubleExtra("lat",Double.NaN),
+                intent.getDoubleExtra("lon",Double.NaN),
+                intent.getFloatExtra("bearing",-1f))
         }
     }
 
@@ -181,8 +194,59 @@ class MainActivity:Activity() {
         roadSource=label("Base de vias offline",13f,secondary).apply {gravity=Gravity.START}
         add(labels,roadText)
         add(labels,roadSource)
+        coordRow=LinearLayout(this).apply {gravity=Gravity.CENTER_VERTICAL}
+        coordText=label("GPS: —",11f,secondary).apply {
+            gravity=Gravity.START
+            typeface=Typeface.MONOSPACE
+            maxLines=1
+            contentDescription="Coordenadas GPS; toque para copiar"
+            setOnClickListener {copyCoordinates()}
+        }
+        coordRow.addView(coordText,LinearLayout.LayoutParams(0,-2,1f))
+        coordRow.addView(label("Relatar erro",11f,Color.rgb(94,214,156),true).apply {
+            setPadding(dp(8),dp(6),0,dp(6))
+            contentDescription="Relatar erro de limite ou radar neste local"
+            setOnClickListener {shareReport()}
+        })
+        add(labels,coordRow,-2,2)
         row.addView(labels,LinearLayout.LayoutParams(0,-2,1f))
         return row
+    }
+    private fun coordinates():String? =
+        if(fixLat.isNaN() || fixLon.isNaN())null
+        else String.format(java.util.Locale.US,"%.5f,%.5f",fixLat,fixLon)
+    private fun copyCoordinates() {
+        val c=coordinates()?:return
+        val clip=getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        clip.setPrimaryClip(android.content.ClipData.newPlainText("Coordenadas",c))
+        if(Build.VERSION.SDK_INT<33)Toast.makeText(this,"Coordenadas copiadas: $c",Toast.LENGTH_SHORT).show()
+    }
+    /** Plain-text report shared through any app the user picks; nothing is sent by this app. */
+    private fun shareReport() {
+        val c=coordinates()
+        val version=try{packageManager.getPackageInfo(packageName,0).versionName?:"?"}catch(_:Exception){"?"}
+        val text=buildString {
+            appendLine("PT2VHF Speed Alert — relato de erro")
+            appendLine("App: v$version (${if(BuildConfig.OTA)"site" else "Google Play"}) • base OSM: ${Roads.dataVersion(this@MainActivity)}")
+            if(c!=null) {
+                appendLine("Local: $c"+
+                    (if(fixAccuracy>=0)" (±${fixAccuracy.roundToInt()} m)" else "")+
+                    (if(fixBearing>=0)" • direção ${fixBearing.roundToInt()}°" else ""))
+                appendLine("Mapa: https://www.openstreetmap.org/?mlat=${"%.5f".format(java.util.Locale.US,fixLat)}&mlon=${"%.5f".format(java.util.Locale.US,fixLon)}#map=18/${"%.5f".format(java.util.Locale.US,fixLat)}/${"%.5f".format(java.util.Locale.US,fixLon)}")
+            } else appendLine("Local: GPS indisponível")
+            appendLine("Via: ${lastRoad.ifBlank{"—"}}")
+            appendLine("Limite mostrado: ${if(limit>0)limit.roundToInt().toString()+" km/h" else "—"}")
+            appendLine("Velocidade: ${if(kmh>=0)kmh.roundToInt().toString()+" km/h" else "—"}")
+            appendLine("Radar à frente: ${if(lastRadar>=0)lastRadar.roundToInt().toString()+" m" else "nenhum"}")
+            appendLine("Status: $lastStatus • $lastSource")
+            appendLine()
+            append("Limite/radar correto na placa: ")
+        }
+        startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+            type="text/plain"
+            putExtra(Intent.EXTRA_SUBJECT,"PT2VHF Speed Alert — erro de limite/radar")
+            putExtra(Intent.EXTRA_TEXT,text)
+        },"Relatar erro"))
     }
     private fun dashboardStats():View {
         val box=LinearLayout(this).apply {
@@ -289,6 +353,7 @@ class MainActivity:Activity() {
         setContentView(scroll)
         EdgeToEdge.apply(this,scroll)
         setMuted(AppConfig.muted(p))
+        applyCoordVisibility()
         StartupDisclaimer.show(this) {
             p.edit().putBoolean("statsNoticeAccepted",true).apply()
             startMonitor()
@@ -323,7 +388,15 @@ class MainActivity:Activity() {
         speedBox.elevation=dp(if(excessive&&blink)12 else 5).toFloat()
     }
     private fun show(v:Double,max:Double,status:String,source:String,street:String,
-                     radar:Double,radarWarning:Boolean,isMuted:Boolean,accuracy:Float) {
+                     radar:Double,radarWarning:Boolean,isMuted:Boolean,accuracy:Float,
+                     lat:Double=Double.NaN,lon:Double=Double.NaN,bearing:Float=-1f) {
+        fixLat=lat;fixLon=lon;fixBearing=bearing;fixAccuracy=accuracy
+        lastStatus=status;lastSource=source;lastRoad=street;lastRadar=radar
+        coordText.text=coordinates()?.let { c ->
+            "GPS "+c.replace(",",", ")+
+                (if(accuracy>=0)" ±${accuracy.roundToInt()}m" else "")+
+                (if(bearing>=0)" ${bearing.roundToInt()}°" else "")
+        } ?: "GPS: —"
         kmh=v
         limit=max
         speedText.text=if(v>=0)v.roundToInt().toString() else "—"
@@ -395,7 +468,7 @@ class MainActivity:Activity() {
         )
         MonitorService.latest?.let {
             show(it.speed,it.limit,it.status,it.source,it.roadName,
-                it.radarMeters?:-1.0,it.radarActive,it.muted,it.gpsAccuracy)
+                it.radarMeters?:-1.0,it.radarActive,it.muted,it.gpsAccuracy,it.lat,it.lon,it.bearing)
         }
     }
     override fun onResume() {
@@ -403,6 +476,12 @@ class MainActivity:Activity() {
         if(AppConfig.screen(p))window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setMuted(AppConfig.muted(p))
+        applyCoordVisibility()
+        StoreUpdates.onResume(this)
+    }
+    private fun applyCoordVisibility() {
+        if(::coordRow.isInitialized)
+            coordRow.visibility=if(AppConfig.showCoords(p))View.VISIBLE else View.GONE
     }
     override fun onStop() {
         ui.removeCallbacks(flash)
