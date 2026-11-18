@@ -1,5 +1,5 @@
 name: Build Google Play bundle (AAB)
-# Builds the "play" flavor (no OTA, no REQUEST_INSTALL_PACKAGES, no network) as a signed AAB.
+# Builds the "play" flavor (no OTA, no REQUEST_INSTALL_PACKAGES) as a signed AAB.
 # The signing key here is the Play UPLOAD key; Google re-signs with the app key (Play App Signing).
 # The very first AAB must be uploaded by hand in Play Console. From then on, if the
 # PLAY_SERVICE_ACCOUNT_JSON secret exists, this workflow can upload straight to a test track.
@@ -78,8 +78,8 @@ jobs:
             echo "::error::Offline databases must live in asset packs, not in the base module"; exit 5
           fi
           manifest=app/build/intermediates/merged_manifest/playRelease/processPlayReleaseMainManifest/AndroidManifest.xml
-          if grep -E 'REQUEST_INSTALL_PACKAGES|android.permission.INTERNET' "$manifest"; then
-            echo "::error::Play flavor must not request install or network permissions"; exit 4
+          if grep -E 'REQUEST_INSTALL_PACKAGES' "$manifest"; then
+            echo "::error::Play flavor must not request the install-packages permission"; exit 4
           fi
           grep 'targetSdkVersion="36"' "$manifest"
           mkdir -p dist

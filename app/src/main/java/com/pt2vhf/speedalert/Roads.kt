@@ -13,7 +13,8 @@ class Roads(context:Context) {
     val limit:Double?, val source:String,
     val roadName:String="Via não identificada",
     val radarDistance:Double?=null, val radarLimit:Double?=null,
-    val radarKey:String?=null
+    val radarKey:String?=null,
+    val wayId:Long=0L
   )
   /** One opened regional database and the area it covers (null = unknown, always queried). */
   private class Db(val id:String,val label:String,val db:SQLiteDatabase,
@@ -182,7 +183,7 @@ class Roads(context:Context) {
         }
       }
     } catch(e:Exception) {Log.w("PT2VHF.Roads","Radar lookup failed",e)}
-    return Result(best.speed,"OSM OFFLINE • "+best.db.label,roadName,radarDistance,radarLimit,radarKey)
+    return Result(best.speed,"OSM OFFLINE • "+best.db.label,roadName,radarDistance,radarLimit,radarKey,best.wayid)
   }
   private fun angle(a:Double,b:Double)=abs((a-b+540.0)%360.0-180.0)
 }

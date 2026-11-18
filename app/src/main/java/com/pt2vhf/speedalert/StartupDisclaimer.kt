@@ -14,8 +14,8 @@ object StartupDisclaimer {
     "não enviamos GPS, velocidade ou trajetos. O país poderá ser estimado "+
     "pelo servidor. As duas opções podem ser desativadas em Configurações.\n\n"
   private const val PRIVACY_PLAY =
-    "Esta versão não envia dados pela Internet: localização, velocidade e trajetos "+
-    "são processados somente no aparelho.\n\n"
+    "Localização, velocidade e trajetos são processados somente no aparelho. "+
+    "Nada é enviado, exceto relatos de erro que você decidir publicar no OpenStreetMap.\n\n"
   fun show(activity: Activity, onContinue: () -> Unit) {
     val message = (
       "O PT2VHF Speed Alert é uma ferramenta auxiliar e experimental.\n\n"+

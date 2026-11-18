@@ -15,7 +15,8 @@ class MonitorService:Service() {
     val roadName:String="Via não identificada",val radarMeters:Double?=null,
     val radarActive:Boolean=false,val muted:Boolean=false,
     val gpsAccuracy:Float=-1f,
-    val lat:Double=Double.NaN,val lon:Double=Double.NaN,val bearing:Float=-1f
+    val lat:Double=Double.NaN,val lon:Double=Double.NaN,val bearing:Float=-1f,
+    val wayId:Long=0L
   )
   companion object {
     const val START="com.pt2vhf.speedalert.START"
@@ -130,7 +131,7 @@ class MonitorService:Service() {
       if(AppConfig.manual(prefs)) "MANUAL • "+selected.source else selected.source,
       excess || radarExcess,selected.roadName,selected.radarDistance,
       radarExcess,AppConfig.muted(prefs),loc.accuracy,
-      loc.latitude,loc.longitude,if(loc.hasBearing())loc.bearing else -1f))
+      loc.latitude,loc.longitude,if(loc.hasBearing())loc.bearing else -1f,selected.wayId))
     approachChime(selected,excess || radarExcess)
   }
   /** One short chime per camera when it first comes within the warning range. */

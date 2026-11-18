@@ -4,7 +4,7 @@
 | Flavor | Saída | Distribuição | OTA do site | Internet/estatísticas |
 |---|---|---|---|---|
 | `github` | APK | pt2vhf.com / GitHub Releases | sim | sim (opt-out) |
-| `play` | AAB | Google Play | **não** (política do Play proíbe auto-atualização) | **não** (sem permissão INTERNET) |
+| `play` | AAB | Google Play | **não** (política do Play proíbe auto-atualização) | só relatos de erro confirmados pelo usuário (notas do OSM) |
 
 O mesmo `applicationId` é usado nas duas; um aparelho só pode ter uma delas. Quem instalou pelo Play recebe atualizações só pelo Play.
 
@@ -26,9 +26,13 @@ O workflow falha se o manifest do flavor `play` contiver `REQUEST_INSTALL_PACKAG
 - **Anúncios:** não contém anúncios.
 - **Classificação de conteúdo:** categoria "Utilitário/Produtividade"; respostas todas "não" → Livre.
 - **Público-alvo:** 18+.
-- **Segurança dos dados:**
-  - "O app coleta ou compartilha algum dos tipos de dados obrigatórios?" → **Não**.
-  - Justificativa: a localização é processada somente no aparelho e a variante Play não tem permissão de Internet. Dados processados só no aparelho não contam como coletados.
+- **Segurança dos dados** (a partir da 1.0.8, por causa dos relatos ao OSM):
+  - "O app coleta ou compartilha dados?" → **Sim**.
+  - **Localização → Localização precisa**: **coletada**, **opcional** (só quando o usuário publica um relato), finalidade **Funcionalidade do app**, sem processamento efêmero.
+  - **Mensagens/Outro conteúdo gerado pelo usuário** (texto do relato): **coletado**, opcional, mesma finalidade.
+  - **Compartilhamento**: o envio ao OpenStreetMap é feito por ação explícita do usuário, que vê o texto e confirma "Publicar". Isso se enquadra na exceção do Play para transferências iniciadas pelo usuário, então marque "não compartilhado". Se preferir a declaração mais conservadora, marque "compartilhado".
+  - Criptografia em trânsito: **Sim** (HTTPS). Exclusão: relatos locais podem ser excluídos no app; notas publicadas seguem o processo da OSMF.
+  - Confira as definições atuais no próprio formulário antes de enviar. Na dúvida, declare a mais.
 - **Apps governamentais / financeiros / saúde:** não.
 - **Categoria:** Mapas e navegação. E-mail de contato obrigatório.
 - **Permissões de serviço em primeiro plano** (Conteúdo do app → Permissões de serviço em primeiro plano):
