@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/osm-regions-measure.yml'
       - 'tools/build_osm_v3.py'
+      - 'scripts/fetch_osm_extract.sh'
 permissions:
   contents: read
 jobs:
@@ -15,24 +16,20 @@ jobs:
     timeout-minutes: 120
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
-        region: [centro-oeste, sul, sudeste]
+        region: [centro-oeste, sudeste]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - run: pip install osmium==4.*
+      - name: Probe openstreetmap.fr mirror (names)
+        continue-on-error: true
+        run: curl -sS -m 30 https://download.openstreetmap.fr/extracts/south-america/brazil/ | grep -oE 'href="[^"]+\.osm\.pbf"' | sort -u | head -40
       - name: Download extract
-        shell: bash
-        run: |
-          set -euo pipefail
-          base=https://download.geofabrik.de/south-america/brazil/${{ matrix.region }}-latest.osm.pbf
-          curl --fail --location --retry 5 --retry-all-errors --connect-timeout 20 --max-time 2400 \
-            -o "$RUNNER_TEMP/r.osm.pbf" "$base"
-          curl --fail --location --retry 5 -o "$RUNNER_TEMP/r.md5" "$base.md5"
-          echo "$(cut -d' ' -f1 "$RUNNER_TEMP/r.md5")  $RUNNER_TEMP/r.osm.pbf" | md5sum -c -
-          ls -la "$RUNNER_TEMP/r.osm.pbf"
+        run: bash scripts/fetch_osm_extract.sh ${{ matrix.region }} "$RUNNER_TEMP/r.osm.pbf"
       - name: Build both profiles
         shell: bash
         run: |
