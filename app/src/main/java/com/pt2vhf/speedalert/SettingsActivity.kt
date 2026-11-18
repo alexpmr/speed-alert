@@ -15,6 +15,7 @@ class SettingsActivity : Activity() {
   private lateinit var beepMs: EditText
   private lateinit var pauseMs: EditText
   private val navy = Color.rgb(12,20,29)
+  private var regionsCleanup:()->Unit={}
   private val exportRequest=7031
   private val importRequest=7032
   private val white = Color.WHITE
@@ -121,6 +122,8 @@ class SettingsActivity : Activity() {
     } else {
       add(root,label("As atualizações são entregues pelo Google Play. Esta versão não envia dados pela Internet: GPS, limites e alarmes funcionam totalmente no aparelho.",12f,Color.LTGRAY))
     }
+    regionsCleanup=RegionPacks.addSettingsSection(this,root,
+      { add(root,label(it,18f,green)) },{ add(root,label(it,12f,Color.LTGRAY)) })
     add(root,label("CÓPIA DE SEGURANÇA",18f,green))
     add(root,label("Exporte as configurações para um arquivo e importe-o em outro aparelho ou após reinstalar. Por segurança, o identificador das estatísticas e permissões não são exportados.",12f,Color.LTGRAY))
     add(root,Button(this).apply {
@@ -187,4 +190,5 @@ class SettingsActivity : Activity() {
     }
   }
   override fun onPause() {save();super.onPause()}
+  override fun onDestroy() {regionsCleanup();super.onDestroy()}
 }

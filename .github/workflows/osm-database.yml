@@ -1,8 +1,10 @@
 name: Rebuild offline OSM database
-# Downloads the current Geofabrik Centro-Oeste extract, rebuilds df_roads_v3.sqlite,
-# compares it with the database the apps currently ship (data/osm-db.lock),
-# publishes it as a pre-release asset and opens a pull request that updates the lock.
-# Nothing reaches users until that pull request is merged and a new app version is built.
+# Builds, from current OpenStreetMap extracts:
+#   - df_roads_v3.sqlite     (DF and surroundings; github APK and iOS)  -> data/osm-db.lock
+#   - centro-oeste/sul/sudeste.sqlite (Google Play asset packs)       -> data/osm-regions.lock
+# compares them with the databases currently shipped, publishes them as one pre-release
+# and opens a pull request updating both lock files. Nothing reaches users until that PR is
+# merged and a new app version is built.
 on:
   workflow_dispatch:
   schedule:
@@ -13,78 +15,112 @@ permissions:
 concurrency:
   group: speed-alert-osm-database
   cancel-in-progress: false
+env:
+  REGION_PROFILE: slim
 jobs:
-  rebuild:
+  build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
+    strategy:
+      fail-fast: true
+      max-parallel: 1          # one extract download at a time (Geofabrik rate limits)
+      matrix:
+        region: [centro-oeste, sul, sudeste]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install pyosmium
-        run: pip install osmium==4.*
-      - name: Download and verify Geofabrik Centro-Oeste extract
+      - run: pip install osmium==4.*
+      - name: Download extract
+        run: bash scripts/fetch_osm_extract.sh ${{ matrix.region }} "$RUNNER_TEMP/r.osm.pbf"
+      - name: Build regional database
+        run: |
+          python3 -I tools/build_osm_v3.py "$RUNNER_TEMP/r.osm.pbf" dist/${{ matrix.region }}.sqlite \
+            --bbox none --profile "$REGION_PROFILE" --region ${{ matrix.region }} \
+            --label ${{ matrix.region }} --min-roads 100000
+      - name: Build DF database (full profile, DF bounding box)
+        if: matrix.region == 'centro-oeste'
+        run: python3 -I tools/build_osm_v3.py "$RUNNER_TEMP/r.osm.pbf" dist/df_roads_v3.sqlite --region df
+      - uses: actions/upload-artifact@v4
+        with:
+          name: osm-${{ matrix.region }}
+          path: dist/*.sqlite
+          retention-days: 7
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Restore the databases currently shipped
         shell: bash
         run: |
           set -euo pipefail
-          base=https://download.geofabrik.de/south-america/brazil/centro-oeste-latest.osm.pbf
-          curl --fail --location --retry 5 --retry-all-errors --connect-timeout 20 --max-time 1200 \
-            -o "$RUNNER_TEMP/centro-oeste.osm.pbf" "$base"
-          curl --fail --location --retry 5 --retry-all-errors -o "$RUNNER_TEMP/centro-oeste.md5" "$base.md5"
-          echo "$(cut -d' ' -f1 "$RUNNER_TEMP/centro-oeste.md5")  $RUNNER_TEMP/centro-oeste.osm.pbf" | md5sum -c -
-          ls -la "$RUNNER_TEMP/centro-oeste.osm.pbf"
-      - name: Build database
-        run: python3 -I tools/build_osm_v3.py "$RUNNER_TEMP/centro-oeste.osm.pbf" dist/df_roads_v3.sqlite
-      - name: Restore the database currently shipped
-        run: bash scripts/restore_osm_db.sh "$RUNNER_TEMP/current.sqlite"
-      - name: Validate and compare with the current database
+          mkdir -p "$RUNNER_TEMP/current"
+          bash scripts/restore_osm_db.sh "$RUNNER_TEMP/current/df_roads_v3.sqlite"
+          bash scripts/restore_osm_regions.sh --allow-missing
+          for r in centro-oeste sul sudeste; do
+            f="osm_${r//-/_}/src/main/assets/osm/$r.sqlite"
+            if [ -f "$f" ]; then mv "$f" "$RUNNER_TEMP/current/$r.sqlite"; fi
+          done
+      - name: Validate and compare
         shell: bash
         run: |
           set -euo pipefail
-          python3 -I - "$RUNNER_TEMP/current.sqlite" dist/df_roads_v3.sqlite > dist/REPORT.md <<'PY'
-          import sqlite3,sys
+          python3 -I - "$RUNNER_TEMP/current" dist > dist/REPORT.md <<'PY'
+          import sqlite3,sys,os
+          cur,new=sys.argv[1:3]
           def stats(p):
               d=sqlite3.connect(p)
               assert d.execute("PRAGMA quick_check").fetchone()[0]=="ok"
               assert d.execute("PRAGMA user_version").fetchone()[0]==3
               q=lambda s:d.execute(s).fetchone()[0]
-              return {"segments":q("SELECT COUNT(*) FROM roads"),
-                      "with_limit":q("SELECT COUNT(*) FROM roads WHERE fwd IS NOT NULL OR bwd IS NOT NULL"),
-                      "named":q("SELECT COUNT(*) FROM roads WHERE name<>'' OR ref<>''"),
-                      "cameras":q("SELECT COUNT(*) FROM cameras")}
-          old,new=stats(sys.argv[1]),stats(sys.argv[2])
-          print("| | atual | nova |\n|---|---|---|")
-          for k in old: print(f"| {k} | {old[k]} | {new[k]} |")
-          # Refuse a database that shrank sharply: usually a truncated/broken extract.
-          for k in ("segments","with_limit","named"):
-              assert new[k]>=0.9*old[k],f"{k} dropped from {old[k]} to {new[k]}"
-          assert new["cameras"]>=100,new
+              return {"MB":os.path.getsize(p)//1048576,
+                      "trechos":q("SELECT COUNT(*) FROM roads"),
+                      "com limite":q("SELECT COUNT(*) FROM roads WHERE fwd IS NOT NULL OR bwd IS NOT NULL"),
+                      "radares":q("SELECT COUNT(*) FROM cameras")}
+          print("| base | métrica | atual | nova |\n|---|---|---|---|")
+          for name in ("df_roads_v3","centro-oeste","sul","sudeste"):
+              n=stats(f"{new}/{name}.sqlite")
+              path=f"{cur}/{name}.sqlite"
+              o=stats(path) if os.path.exists(path) else None
+              for k in n: print(f"| {name} | {k} | {o[k] if o else '—'} | {n[k]} |")
+              if o:   # refuse a database that shrank sharply: usually a truncated/broken extract
+                  for k in ("trechos","com limite"):
+                      assert n[k]>=0.9*o[k],f"{name}: {k} dropped from {o[k]} to {n[k]}"
           PY
-          cat dist/REPORT.md
-          cat dist/REPORT.md >> "$GITHUB_STEP_SUMMARY"
-          (cd dist && sha256sum df_roads_v3.sqlite > SHA256SUMS.txt)
-      - name: Publish pre-release and open pull request updating data/osm-db.lock
+          cat dist/REPORT.md | tee -a "$GITHUB_STEP_SUMMARY"
+          (cd dist && sha256sum *.sqlite > SHA256SUMS.txt)
+      - name: Publish pre-release and open pull request updating the lock files
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
           tag="osm-db-$(date -u +%Y%m%d-%H%M)"
-          sha="$(cut -d' ' -f1 dist/SHA256SUMS.txt)"
-          gh release create "$tag" dist/df_roads_v3.sqlite dist/SHA256SUMS.txt \
+          gh release create "$tag" dist/*.sqlite dist/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --latest=false \
-            --title "Base offline OSM $tag" --notes-file dist/REPORT.md
-          url="https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/df_roads_v3.sqlite"
-          sed -i "s#^URL=.*#URL=$url#; s#^SHA256=.*#SHA256=$sha#" data/osm-db.lock
+            --title "Bases offline OSM $tag" --notes-file dist/REPORT.md
+          dl="https://github.com/$GITHUB_REPOSITORY/releases/download/$tag"
+          sha() { grep " $1\$" dist/SHA256SUMS.txt | cut -d' ' -f1; }
+          sed -i "s#^URL=.*#URL=$dl/df_roads_v3.sqlite#; s#^SHA256=.*#SHA256=$(sha df_roads_v3.sqlite)#" data/osm-db.lock
+          sed -i '/^[a-z-]\+ https:/d' data/osm-regions.lock
+          for r in centro-oeste sul sudeste; do echo "$r $dl/$r.sqlite $(sha $r.sqlite)" >> data/osm-regions.lock; done
           branch="osm-db/$tag"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$branch"
-          git commit -am "data: offline OSM database $tag"
+          git commit -am "data: offline OSM databases $tag"
           git push origin "$branch"
           if ! gh pr create --repo "$GITHUB_REPOSITORY" --head "$branch" --base "${GITHUB_REF_NAME}" \
-              --title "Atualizar base offline OSM ($tag)" \
-              --body "$(printf 'Base regerada a partir do extrato Geofabrik Centro-Oeste atual.\n\n%s\n\nDepois do merge, a próxima versão do app (aumente o versionCode) usa esta base.' "$(cat dist/REPORT.md)")"; then
+              --title "Atualizar bases offline OSM ($tag)" \
+              --body "$(printf 'Bases regeneradas a partir dos extratos OSM atuais (Geofabrik ou espelho openstreetmap.fr).\n\n%s\n\nDepois do merge, gere uma nova versão do app (aumente o versionCode).' "$(cat dist/REPORT.md)")"; then
             echo "::warning::Could not open the PR (enable 'Allow GitHub Actions to create pull requests' in Settings → Actions). Branch $branch was pushed; open the PR manually."
           fi

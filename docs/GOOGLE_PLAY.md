@@ -58,6 +58,19 @@ Depois que o **primeiro AAB foi enviado manualmente**:
 3. Grave o JSON no secret `PLAY_SERVICE_ACCOUNT_JSON`.
 4. Rode o workflow com track `internal` ou `alpha`. Use status `draft` enquanto o app nunca tiver passado por revisão.
 
+## Regiões offline (Play Asset Delivery)
+| Pack | Região | Entrega |
+|---|---|---|
+| `osm_centro_oeste` | DF, GO, MT, MS | **fast-follow**: o Play baixa sozinho logo após instalar |
+| `osm_sudeste` | SP, RJ, MG, ES | **on-demand**: o usuário baixa em Configurações → Regiões offline |
+| `osm_sul` | PR, SC, RS | **on-demand** |
+
+- As bases são geradas pelo workflow **Rebuild offline OSM database** (perfil "slim": vias principais com nome, mais qualquer via com limite cadastrado) e fixadas em `data/osm-regions.lock`. O workflow **Build Google Play bundle (AAB)** falha se alguma região não estiver fixada.
+- Os packs ficam no AAB, então só a versão do Play tem as regiões. O APK do site continua só com DF e entorno.
+- Os packs não pedem permissão de Internet: quem baixa é o Google Play.
+- **Testar:** só funciona com o app instalado pelo Play (teste interno serve). Logo após instalar, o Centro-Oeste pode levar alguns minutos para chegar; enquanto isso a tela mostra "REGIÃO SEM BASE OFFLINE".
+- **Atualizar as bases:** rode o workflow de geração, faça o merge do PR que ele abrir, aumente o `versionCode` e gere um novo AAB. As bases viajam com cada versão do app.
+
 ## 7. Atualizações para os usuários
 - O Play atualiza automaticamente conforme a configuração de cada aparelho (normalmente em 1–2 dias, no Wi-Fi).
 - O flavor `play` usa a **Play In-App Updates API** (atualização flexível). Ao abrir o app, se houver versão nova, o Play mostra "Atualizar" e baixa em segundo plano, sem parar o monitoramento. O pedido para reiniciar só aparece com o veículo parado (< 5 km/h). Se o usuário recusar, o app pergunta de novo no máximo uma vez a cada 24 h por versão.

@@ -6,7 +6,7 @@
 set -uo pipefail
 REGION="${1:?region: centro-oeste|sul|sudeste}"; OUT="${2:?output .osm.pbf}"
 case "$REGION" in
-  centro-oeste) FR=centre-ouest ;;  sul) FR=sud ;;  sudeste) FR=sudeste ;;
+  centro-oeste) FR=central-west ;;  sul) FR=south ;;  sudeste) FR=southeast ;;
   *) echo "unknown region $REGION" >&2; exit 2 ;;
 esac
 geofabrik() {
@@ -20,7 +20,7 @@ for attempt in 1 2 3 4 5 6 7 8; do
   echo "::warning::Geofabrik attempt $attempt failed for $REGION; waiting 60 s"; sleep 60
 done
 mirror="https://download.openstreetmap.fr/extracts/south-america/brazil"
-for name in "$REGION" "$FR"; do
+for name in "$FR"; do
   if curl --fail --location --connect-timeout 20 --max-time 2400 -o "$OUT" "$mirror/$name-latest.osm.pbf"; then
     if curl --fail --location -o "$OUT.md5" "$mirror/$name-latest.osm.pbf.md5" 2>/dev/null; then
       echo "$(cut -d' ' -f1 "$OUT.md5")  $OUT" | md5sum -c - || continue

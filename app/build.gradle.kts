@@ -7,10 +7,13 @@ android {
         applicationId="com.pt2vhf.speedalert"
         minSdk=26
         targetSdk=36
-        versionCode=107
-        versionName="1.0.7"
+        versionCode=108
+        versionName="1.0.8"
     }
     buildFeatures { buildConfig=true }
+    // Regional OSM databases for Google Play (Play Asset Delivery). Only AABs carry asset packs:
+    // the github APK keeps the DF database in src/github/assets instead.
+    assetPacks += listOf(":osm_centro_oeste", ":osm_sul", ":osm_sudeste")
     // github: APK distributed by pt2vhf.com/GitHub, with the site OTA updater and opt-in stats.
     // play:   AAB for Google Play. Play policy forbids self-updates outside Play, so the
     //         OTA updater, REQUEST_INSTALL_PACKAGES and network stats are compiled out.
@@ -53,4 +56,5 @@ dependencies {
     implementation("androidx.core:core:1.15.0")
     "githubImplementation"("androidx.work:work-runtime-ktx:2.11.2")
     "playImplementation"("com.google.android.play:app-update:2.1.0")
+    "playImplementation"("com.google.android.play:asset-delivery:2.3.0")
 }

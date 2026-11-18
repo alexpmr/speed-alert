@@ -15,68 +15,97 @@ class Roads(context:Context) {
     val radarDistance:Double?=null, val radarLimit:Double?=null,
     val radarKey:String?=null
   )
-  companion object {
-    /** Build date of the installed offline database (metadata.updated_utc), for bug reports. */
-    fun dataVersion(context:Context):String=try {
-      val f=File(context.applicationContext.filesDir,"df_roads_v3.sqlite")
-      SQLiteDatabase.openDatabase(f.absolutePath,null,SQLiteDatabase.OPEN_READONLY).use { d ->
-        d.rawQuery("SELECT v FROM metadata WHERE k='updated_utc'",null).use {
-          if(it.moveToFirst())it.getString(0).take(10) else "?"
-        }
-      }
-    } catch(_:Exception) {"?"}
+  /** One opened regional database and the area it covers (null = unknown, always queried). */
+  private class Db(val id:String,val label:String,val db:SQLiteDatabase,
+    val south:Double?,val north:Double?,val west:Double?,val east:Double?,val built:String) {
+    fun covers(lat:Double,lon:Double):Boolean {
+      if(south==null||north==null||west==null||east==null)return true
+      val m=0.05
+      return lat>=south-m && lat<=north+m && lon>=west-m && lon<=east+m
+    }
   }
-  private val app=context.applicationContext
-  private val file=File(app.filesDir,"df_roads_v3.sqlite")
-  private val db:SQLiteDatabase?
+  companion object {
+    private const val TAG="PT2VHF.Roads"
+    @Volatile private var summary:String="?"
+    fun regionLabel(id:String)=when(id) {
+      "centro-oeste"->"Centro-Oeste"; "sul"->"Sul"; "sudeste"->"Sudeste"
+      "df","df_roads_v3"->"DF e entorno"; else->id }
+    /** Build date(s) of the loaded offline databases, for bug reports. */
+    fun dataVersion(@Suppress("UNUSED_PARAMETER") context:Context):String=summary
+
+    /**
+     * Databases bundled as APK assets (github: df_roads_v3.sqlite; play: install-time pack
+     * osm/<region>.sqlite) are copied once per app version into filesDir/osm, so an app update always
+     * replaces older data. Files delivered elsewhere (Play on-demand packs) are opened in place.
+     */
+    fun sources(context:Context):List<Pair<String,File>> {
+      val app=context.applicationContext
+      val out=ArrayList<Pair<String,File>>()
+      val dir=File(app.filesDir,"osm").apply { mkdirs() }
+      val version=try {
+        val info=app.packageManager.getPackageInfo(app.packageName,0)
+        if(android.os.Build.VERSION.SDK_INT>=28)info.longVersionCode.toString()
+        else @Suppress("DEPRECATION") info.versionCode.toString()
+      } catch(_:Exception) {"0"}
+      val bundled=ArrayList<String>()
+      try { if(app.assets.list("")?.contains("df_roads_v3.sqlite")==true)bundled.add("df_roads_v3.sqlite") } catch(_:Exception) {}
+      try { app.assets.list("osm")?.filter { it.endsWith(".sqlite") }?.forEach { bundled.add("osm/"+it) } } catch(_:Exception) {}
+      for(asset in bundled) {
+        val name=asset.substringAfterLast('/')
+        val target=File(dir,name)
+        val marker=File(dir,"$name.version")
+        try {
+          if(!target.exists() || marker.takeIf{it.exists()}?.readText()!=version) {
+            val temp=File(dir,"$name.tmp")
+            app.assets.open(asset).use { inp -> temp.outputStream().use { out -> inp.copyTo(out);out.fd.sync() } }
+            if(target.exists() && !target.delete())throw java.io.IOException("cannot replace $name")
+            if(!temp.renameTo(target))throw java.io.IOException("cannot install $name")
+            marker.writeText(version)
+          }
+          out.add(name.removeSuffix(".sqlite") to target)
+        } catch(e:Exception) { Log.e(TAG,"Could not install bundled $asset",e) }
+      }
+      // Remove the pre-1.0.7 single-file copy.
+      File(app.filesDir,"df_roads_v3.sqlite").delete()
+      out.addAll(RegionPacks.installedFiles(app))
+      return out
+    }
+  }
+  private val dbs=ArrayList<Db>()
   private val initError:String?
   init {
-    var opened:SQLiteDatabase?=null
     var failed:String?=null
-    try { opened=openChecked() }
-    catch(e:Exception) {
-      failed=e.javaClass.simpleName
-      Log.e("PT2VHF.Roads","Offline v3 initialization failed",e)
+    for((id,file) in try { sources(context) } catch(e:Exception) { Log.e(TAG,"sources",e);emptyList() }) {
+      try {
+        val d=SQLiteDatabase.openDatabase(file.absolutePath,null,
+          SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS)
+        if(d.version!=3){d.close();failed="versão inválida: $id";continue}
+        val meta=HashMap<String,String>()
+        try { d.rawQuery("SELECT k,v FROM metadata",null).use { while(it.moveToNext())meta[it.getString(0)]=it.getString(1) } }
+        catch(_:Exception) {}
+        dbs.add(Db(id,regionLabel(meta["region"]?:id),d,meta["bbox_south"]?.toDoubleOrNull(),meta["bbox_north"]?.toDoubleOrNull(),
+          meta["bbox_west"]?.toDoubleOrNull(),meta["bbox_east"]?.toDoubleOrNull(),meta["updated_utc"]?.take(10)?:"?"))
+      } catch(e:Exception) {
+        failed=e.javaClass.simpleName
+        Log.e(TAG,"Cannot open offline database $id",e)
+      }
     }
-    db=opened
-    initError=failed
+    initError=if(dbs.isEmpty())(failed?:"nenhuma base instalada") else null
+    summary=if(dbs.isEmpty())"nenhuma" else dbs.joinToString(", ") { it.id+" "+it.built }
   }
-  private fun replace() {
-    val temp=File(file.parentFile,file.name+".tmp")
-    try {
-      app.assets.open(file.name).use { inp ->
-        temp.outputStream().use { out -> inp.copyTo(out);out.fd.sync() }
-      }
-      if(file.exists() && !file.delete())throw java.io.IOException("db replacement failed")
-      if(!temp.renameTo(file))throw java.io.IOException("db installation failed")
-    } finally { if(temp.exists())temp.delete() }
-  }
-  private fun openChecked():SQLiteDatabase {
-    if(!file.exists())replace()
-    fun open()=SQLiteDatabase.openDatabase(file.absolutePath,null,SQLiteDatabase.OPEN_READONLY)
-    try {
-      val d=open()
-      val valid=d.version==3 && d.rawQuery("SELECT COUNT(*) FROM road_tiles",null).use {
-        it.moveToFirst() && it.getLong(0)>=50000L
-      }
-      if(valid)return d
-      d.close()
-    } catch(e:Exception) {Log.w("PT2VHF.Roads","Bad local db, recovering",e)}
-    replace()
-    val d=open()
-    if(d.version!=3){d.close();throw java.io.IOException("Invalid v3 database")}
-    return d
-  }
+  fun close() { dbs.forEach { try { it.db.close() } catch(_:Exception) {} } }
   fun resolve(loc:Location, radarRangeMeters:Double=300.0):Result {
-    val d=db?:return Result(null,"BASE OFFLINE INDISPONÍVEL: "+(initError ?: "erro"))
+    if(dbs.isEmpty())return Result(null,"BASE OFFLINE INDISPONÍVEL: "+(initError ?: "erro"))
     val lat=loc.latitude;val lon=loc.longitude
+    val here=dbs.filter { it.covers(lat,lon) }
+    if(here.isEmpty())return Result(null,"REGIÃO SEM BASE OFFLINE — veja Configurações")
     if(!loc.hasBearing())return Result(null,"AGUARDANDO DIREÇÃO GPS")
     val tlat=floor(lat*1000.0).toInt()
     val tlon=floor(lon*1000.0).toInt()
-    data class Match(val score:Double,val speed:Double?,val name:String,val wayid:Long)
+    data class Match(val score:Double,val speed:Double?,val name:String,val wayid:Long,val db:Db)
     val candidates=ArrayList<Match>()
-    try {
-      d.rawQuery(
+    try { for(src in here) {
+      src.db.rawQuery(
         "SELECT r.lat1,r.lon1,r.lat2,r.lon2,r.fwd,r.bwd,r.name,r.ref,r.wayid "+
         "FROM road_tiles t JOIN roads r ON t.road_id=r.id "+
         "WHERE t.tile_lat BETWEEN ? AND ? AND t.tile_lon BETWEEN ? AND ? "+
@@ -104,10 +133,10 @@ class Roads(context:Context) {
           val column=if(f<=b)4 else 5
           val max=if(c.isNull(column))null else c.getDouble(column)
           val named=c.getString(6).orEmpty().ifBlank{c.getString(7).orEmpty()}
-          candidates.add(Match(distance+heading*0.3,max,named,c.getLong(8)))
+          candidates.add(Match(distance+heading*0.3,max,named,c.getLong(8),src))
         }
       }
-    } catch(e:Exception) {
+    } } catch(e:Exception) {
       Log.e("PT2VHF.Roads","Road query failed",e)
       return Result(null,"ERRO CONSULTA OFFLINE: "+e.javaClass.simpleName)
     }
@@ -129,7 +158,7 @@ class Roads(context:Context) {
     val latTiles=(offset*1000).toInt()+2
     val lonTiles=(offset*1000/max(0.4,cos(Math.toRadians(lat)))).toInt()+2
     try {
-      d.rawQuery(
+      best.db.db.rawQuery(
         "SELECT lat,lon,speed FROM cameras WHERE wayid=? AND "+
         "tile_lat BETWEEN ? AND ? AND tile_lon BETWEEN ? AND ?",
         arrayOf(best.wayid.toString(),(tlat-latTiles).toString(),(tlat+latTiles).toString(),
@@ -153,7 +182,7 @@ class Roads(context:Context) {
         }
       }
     } catch(e:Exception) {Log.w("PT2VHF.Roads","Radar lookup failed",e)}
-    return Result(best.speed,"OSM OFFLINE v3",roadName,radarDistance,radarLimit,radarKey)
+    return Result(best.speed,"OSM OFFLINE • "+best.db.label,roadName,radarDistance,radarLimit,radarKey)
   }
   private fun angle(a:Double,b:Double)=abs((a-b+540.0)%360.0-180.0)
 }

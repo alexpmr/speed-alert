@@ -59,3 +59,9 @@ O novo APK com certificado de release também será incompatível com as betas h
 - Bipe curto, uma vez por radar, ao entrar na distância de aviso, mesmo dentro do limite. O tom contínuo de excesso perto do radar continua igual, e o bipe respeita o Silenciar.
 - Versão Google Play: aviso de atualização do próprio Play (flexível, reinício só com o veículo parado).
 - Opções novas em Configurações: "Bipe curto ao se aproximar de radar" e "Mostrar coordenadas GPS na tela".
+
+## 1.0.8 — Centro-Oeste, Sudeste e Sul (Google Play)
+- Versão do Play: bases offline por região, entregues como asset packs. O Centro-Oeste é baixado automaticamente; Sudeste e Sul ficam em Configurações → Regiões offline. Detalhes em [docs/GOOGLE_PLAY.md](docs/GOOGLE_PLAY.md).
+- O app consulta todas as bases que cobrem o local atual. Fora delas, mostra "REGIÃO SEM BASE OFFLINE".
+- As bases são carregadas em segundo plano e substituídas a cada atualização do app. Antes, uma cópia antiga podia continuar em uso depois de atualizar.
+- O APK do site continua com DF e entorno.

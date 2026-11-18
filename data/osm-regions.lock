@@ -1,0 +1,3 @@
+# Regional offline OSM databases shipped as Google Play asset packs (play flavor).
+# One line per region: <region> <https URL of the .sqlite release asset> <sha256>
+# Filled by the "Rebuild offline OSM database" workflow (via pull request).
