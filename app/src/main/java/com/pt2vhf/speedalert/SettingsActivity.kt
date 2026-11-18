@@ -121,6 +121,13 @@ class SettingsActivity : Activity() {
     } else {
       add(root,label("As atualizações são entregues pelo Google Play. GPS, limites e alarmes funcionam totalmente no aparelho; só os relatos de erro que você confirmar são enviados (ao OpenStreetMap).",12f,Color.LTGRAY))
     }
+    add(root,Button(this).apply {
+      text="POLÍTICA DE PRIVACIDADE"
+      setOnClickListener {
+        try { startActivity(Intent(Intent.ACTION_VIEW,android.net.Uri.parse(AppConfig.PRIVACY_URL))) }
+        catch(_:Exception) { Toast.makeText(this@SettingsActivity,AppConfig.PRIVACY_URL,Toast.LENGTH_LONG).show() }
+      }
+    })
     add(root,label("RELATOS DE ERRO",18f,green))
     add(root,label("Erros marcados com \"Marcar erro\" na tela principal. Complete e envie ao OpenStreetMap com o veículo parado.",12f,Color.LTGRAY))
     add(root,Button(this).apply {
