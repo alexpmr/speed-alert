@@ -1,5 +1,5 @@
 # Offline OSM database bundled into the Android and iOS apps.
 # Updated by the "Rebuild offline OSM database" workflow (via pull request).
 # URL may point to a raw .sqlite release asset or to an .apk that contains assets/df_roads_v3.sqlite.
-URL=https://github.com/alexpmr/speed-alert/releases/download/osm-db-20261118-1627/df_roads_v3.sqlite
-SHA256=9e33181d38d74afba10e23bc75e2a06ec8576711d2620c4238043d8a99aa259c
+URL=https://github.com/alexpmr/speed-alert/releases/download/osm-tiles-20261118-1718/df_roads_v3.sqlite
+SHA256=f8371491baef899a8e1f77c17ac0605c370a69f33a9cf9705c4cb54e523e3012
