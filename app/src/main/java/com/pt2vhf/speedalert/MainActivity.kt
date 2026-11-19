@@ -447,7 +447,10 @@ class MainActivity:Activity() {
     private val backCallback:Any? by lazy {
         if(Build.VERSION.SDK_INT>=33) android.window.OnBackInvokedCallback { confirmExit() } else null
     }
-    @Deprecated("Android 12 and older; 13+ uses OnBackInvokedCallback")
+    // Still called on Android 12 and on 13–15 without predictive-back opt-in; Android 16
+    // (targetSdk 36) uses the OnBackInvokedCallback registered in onCreate instead.
+    @Deprecated("Android 15 and older; 16+ uses OnBackInvokedCallback")
+    @android.annotation.SuppressLint("GestureBackNavigation")
     override fun onBackPressed() = confirmExit()
     override fun onResume() {
         super.onResume()
