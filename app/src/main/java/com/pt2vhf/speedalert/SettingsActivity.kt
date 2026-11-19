@@ -93,6 +93,7 @@ class SettingsActivity : Activity() {
         save()
         val test=AlarmAudio(this@SettingsActivity)
         test.setAlert(true,AppConfig.mode(p),AppConfig.volume(p).coerceAtLeast(1),AppConfig.beepMs(p),AppConfig.pauseMs(p))
+        test.lastError?.let { Toast.makeText(this@SettingsActivity,"Som: $it",Toast.LENGTH_LONG).show() }
         button.isEnabled=false
         button.postDelayed({ test.close(); button.isEnabled=true },2000L)
       }

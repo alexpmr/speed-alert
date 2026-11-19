@@ -71,6 +71,15 @@ class AlarmAudio(context:Context) {
         return output
     }
 
+    /** Last start failure, shown by Settings → Testar som (null = playing fine). */
+    @Volatile var lastError:String?=null; private set
+    @Volatile private var playing=false
+    private var thread:Thread?=null
+
+    /**
+     * Streams the looping pattern from a worker thread (MODE_STREAM). The static-buffer
+     * loop used since 1.0.4 was created and released at once on HyperOS, never playing.
+     */
     @Synchronized
     fun setAlert(active:Boolean,style:String,volume:Int,beep:Int,pause:Int) {
         if(!active || volume<=0) {stop();return}
@@ -78,12 +87,13 @@ class AlarmAudio(context:Context) {
         val level=volume.coerceIn(0,100)
         if(playback!=null && key==currentPattern) {
             if(level!=currentVolume) {
-                playback?.setVolume(level/100f)
+                try { playback?.setVolume(level/100f) } catch(_:Exception) {}
                 currentVolume=level
             }
             return
         }
         stop()
+        var step="criar"
         try {
             val bytes=pcm(style,beep,pause)
             val format=AudioFormat.Builder()
@@ -91,48 +101,51 @@ class AlarmAudio(context:Context) {
                 .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
                 .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
                 .build()
+            val min=AudioTrack.getMinBufferSize(audioRate,AudioFormat.CHANNEL_OUT_MONO,AudioFormat.ENCODING_PCM_16BIT)
             val player=AudioTrack.Builder()
                 .setAudioAttributes(audioAttributes)
                 .setAudioFormat(format)
-                .setBufferSizeInBytes(bytes.size)
-                .setTransferMode(AudioTrack.MODE_STATIC)
+                .setBufferSizeInBytes(maxOf(min,4096))
+                .setTransferMode(AudioTrack.MODE_STREAM)
                 .build()
+            step="inicializar"
             if(player.state!=AudioTrack.STATE_INITIALIZED) {
                 player.release()
-                throw IllegalStateException("AudioTrack initialization failed")
+                throw IllegalStateException("estado ${player.state}")
             }
-            if(player.write(bytes,0,bytes.size)!=bytes.size) {
-                player.release()
-                throw IllegalStateException("Could not write looping alarm")
-            }
-            if(player.setLoopPoints(0,bytes.size/2,-1)!=AudioTrack.SUCCESS) {
-                player.release()
-                throw IllegalStateException("Could not configure looping alarm")
-            }
+            step="foco"
             val request=AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
                 .setAudioAttributes(audioAttributes)
                 .setOnAudioFocusChangeListener(focusListener,Handler(Looper.getMainLooper()))
                 .build()
             manager.requestAudioFocus(request)
             focus=request
+            step="tocar"
+            player.setVolume(level/100f)
+            player.play()
             playback=player
             currentPattern=key
             currentVolume=level
-            player.setVolume(level/100f)
-            player.play()
+            playing=true
+            thread=Thread {
+                try { while(playing) { if(player.write(bytes,0,bytes.size)<0)break } }
+                catch(e:Exception) { Log.e("PT2VHF.Audio","write",e) }
+                finally { try { player.stop() } catch(_:Exception) {}; player.release() }
+            }.apply { name="pt2vhf-alarm";start() }
+            lastError=null
         }catch(e:Exception) {
-            Log.e("PT2VHF.Audio","Could not start background alarm",e)
+            lastError="falha ao $step: "+(e.message?:e.javaClass.simpleName)
+            Log.e("PT2VHF.Audio","Could not start alarm ($step)",e)
             stop()
         }
     }
     @Synchronized
     fun stop() {
-        try {
-            playback?.pause()
-            playback?.flush()
-            playback?.release()
-        }catch(_:Exception){}
+        playing=false
+        // stop() makes the blocked write() return; the worker thread then releases the track.
+        try { playback?.stop() } catch(_:Exception){}
         playback=null
+        thread=null
         focus?.let {manager.abandonAudioFocusRequest(it)}
         focus=null
         currentPattern=""
