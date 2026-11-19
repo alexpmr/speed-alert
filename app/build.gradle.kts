@@ -19,10 +19,13 @@ android {
         create("github") {
             dimension="store"
             buildConfigField("boolean","OTA","true")
+            buildConfigField("boolean","ONLINE_TILES","false")
         }
         create("play") {
             dimension="store"
             buildConfigField("boolean","OTA","false")
+            // Outside the prebuilt tiles, fetch ~11 km cells from OpenStreetMap (worldwide).
+            buildConfigField("boolean","ONLINE_TILES","true")
         }
     }
     signingConfigs {

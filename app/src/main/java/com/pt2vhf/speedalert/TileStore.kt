@@ -38,6 +38,10 @@ object TileStore {
   fun around(lat:Double,lon:Double):Set<String> =
     (-1..1).flatMap { a -> (-1..1).map { b -> tileId(lat+a,lon+b) } }.toSet()
 
+  /** True when the prebuilt tile set covers this 1° tile (from the cached manifest). */
+  fun listed(c:Context,id:String):Boolean =
+    manifest(c,refresh=false)?.optJSONObject("tiles")?.has(id)==true
+
   /** Tile databases present on the device, for Roads. */
   fun files(c:Context):List<Pair<String,File>> =
     dir(c).listFiles { f -> f.name.endsWith(".sqlite") }?.map { it.name.removeSuffix(".sqlite") to it } ?: emptyList()

@@ -217,13 +217,19 @@ class SettingsActivity : Activity() {
     add(root,label("BASE OFFLINE POR BLOCOS",18f,green))
     add(root,label("Limites de velocidade são baixados em blocos de cerca de 110 km ao redor de onde você está, "+
       "e os não usados há 30 dias são apagados. Cobertura: Centro-Oeste, Sudeste e Sul. "+
-      "Antes de viajar para um lugar sem sinal, baixe a região inteira.",12f,Color.LTGRAY))
+      "Antes de viajar para um lugar sem sinal, baixe a região inteira."+
+      (if(BuildConfig.ONLINE_TILES)"\n\nNo resto do Brasil e do mundo, o app baixa áreas de cerca de 11 km direto do "+
+        "OpenStreetMap (servidor público Overpass) enquanto você dirige. Só os limites da área são enviados, "+
+        "não a sua posição exata." else ""),12f,Color.LTGRAY))
     val status=label("",13f)
     add(root,status)
     fun refresh() {
       val (n,bytes)=TileStore.usage(this)
+      val (on,onBytes)=OnlineTiles.usage(this)
       status.text="$n blocos no aparelho • ${(bytes+524287)/1048576} MB • dados OSM de ${TileStore.dataDate(this)}"+
-        (if(TileStore.busy)" • baixando…" else "")+(TileStore.lastError?.let { " • último erro: $it" }?:"")
+        (if(BuildConfig.ONLINE_TILES)" • $on áreas online (${(onBytes+524287)/1048576} MB)" else "")+
+        (if(TileStore.busy)" • baixando…" else "")+
+        ((TileStore.lastError?:OnlineTiles.lastError)?.let { " • último erro: $it" }?:"")
     }
     refresh()
     toggle(root,"Baixar blocos só no Wi-Fi","tilesWifiOnly",false)
@@ -258,7 +264,7 @@ class SettingsActivity : Activity() {
         android.app.AlertDialog.Builder(this@SettingsActivity).setTitle("Apagar blocos?")
           .setMessage("Os blocos ao redor serão baixados de novo automaticamente quando houver Internet.")
           .setNegativeButton("Cancelar",null)
-          .setPositiveButton("Apagar") { _,_ -> TileStore.clear(this@SettingsActivity);reloadMonitor();refresh() }
+          .setPositiveButton("Apagar") { _,_ -> TileStore.clear(this@SettingsActivity);OnlineTiles.clear(this@SettingsActivity);reloadMonitor();refresh() }
           .show()
       }
     })

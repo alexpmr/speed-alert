@@ -16,17 +16,17 @@ a{color:var(--link)} p,li{color:var(--fg)} ul{padding-left:1.25rem}
 </head>
 <body><main>
 <h1>Política de Privacidade — PT2VHF Speed Alert (Android, Google Play)</h1>
-<p>Última atualização: 18 de novembro de 2026 (versão 1.0.8)</p>
+<p>Última atualização: 18 de novembro de 2026 (versão 1.0.9)</p>
 <p>Esta política se aplica ao aplicativo <strong>PT2VHF Speed Alert</strong> (<code>com.pt2vhf.speedalert</code>) distribuído pelo Google Play.</p>
 <h2>Dados que o aplicativo usa</h2>
 <ul>
-<li><strong>Localização precisa (GPS):</strong> usada no próprio aparelho para calcular a velocidade, identificar a via na base offline OpenStreetMap, mostrar o limite e emitir alertas. Ela não é gravada em histórico. Só sai do aparelho em dois casos, descritos abaixo: o nome do bloco de mapa baixado, que indica uma região aproximada, e os relatos de erro que você decidir publicar.</li>
+<li><strong>Localização precisa (GPS):</strong> usada no próprio aparelho para calcular a velocidade, identificar a via na base offline OpenStreetMap, mostrar o limite e emitir alertas. Ela não é gravada em histórico. Só sai do aparelho em dois casos, descritos abaixo: o nome ou os limites da área de mapa baixada, que indicam uma região aproximada, e os relatos de erro que você decidir publicar.</li>
 <li><strong>Configurações do aplicativo</strong> (limite manual, tolerância, volume, tipo de alarme etc.): ficam somente no armazenamento privado do aparelho. A exportação de configurações só ocorre quando você escolhe um arquivo pelo seletor do Android.</li>
 </ul>
 <h2>Download da base de mapas por blocos</h2>
-<p>Os limites de velocidade e radares são baixados em blocos de cerca de 110 km × 110 km ao redor de onde você está. Para isso, o aplicativo pede ao servidor de arquivos (atualmente o GitHub, da Microsoft) apenas o nome do bloco, como "s16w048". Isso revela a região aproximada, mas não a posição exata, a velocidade, o trajeto nem qualquer identificador seu ou do aparelho. Como em qualquer acesso à Internet, o servidor recebe o endereço IP da conexão. Você pode limitar os downloads ao Wi-Fi ou baixar regiões inteiras antes de viajar, em Configurações.</p>
+<p>Os limites de velocidade são baixados em blocos de cerca de 110 km × 110 km ao redor de onde você está. Para isso, o aplicativo pede ao servidor de arquivos (atualmente o GitHub, da Microsoft) apenas o nome do bloco, como "s16w048". Isso revela a região aproximada, mas não a posição exata, a velocidade, o trajeto nem qualquer identificador seu ou do aparelho. Como em qualquer acesso à Internet, o servidor recebe o endereço IP da conexão. Você pode limitar os downloads ao Wi-Fi ou baixar regiões inteiras antes de viajar, em Configurações. Fora das regiões com blocos prontos (Centro-Oeste, Sudeste e Sul do Brasil), a versão do Google Play baixa áreas menores, de cerca de 11 km × 11 km, direto do OpenStreetMap, pelo servidor público Overpass (overpass-api.de, com overpass.kumi.systems como reserva). Nesse caso são enviados ao servidor apenas os quatro limites da área (por exemplo, latitudes −15,9 a −15,8 e longitudes −47,9 a −47,8), o que indica a sua região com precisão de cerca de 11 km, mas não a posição exata, a velocidade, o trajeto nem qualquer identificador. O servidor também recebe o endereço IP da conexão.</p>
 <h2>Relatos de erro (opcionais, enviados só com sua confirmação)</h2>
-<p>Com "Marcar erro", o aplicativo guarda no próprio aparelho a posição, a direção, a via e o limite ou radar exibidos naquele momento. Nada é enviado nesse passo.</p>
+<p>Com "Marcar erro", o aplicativo guarda no próprio aparelho a posição, a direção, a via e o limite exibido naquele momento. Nada é enviado nesse passo.</p>
 <p>Se você decidir <strong>publicar</strong> um relato, o aplicativo cria uma <strong>nota pública e anônima no OpenStreetMap</strong> (openstreetmap.org, mantido pela OpenStreetMap Foundation). A nota contém:
 - a posição marcada;
 - o tipo do problema, o valor informado por você e o comentário;
@@ -34,7 +34,7 @@ a{color:var(--link)} p,li{color:var(--fg)} ul{padding-left:1.25rem}
 - a data e as versões do app e da base.</p>
 <p>A nota fica visível para qualquer pessoa e é regida pela política de privacidade da OpenStreetMap Foundation (https://osmfoundation.org/wiki/Privacy_Policy). O servidor do OSM recebe também o endereço IP da conexão, como em qualquer acesso à Internet. Não enviamos nome, e-mail, identificador do aparelho nem histórico de trajetos.</p>
 <h2>Dados que o aplicativo NÃO coleta</h2>
-<p>Não há contas, anúncios, rastreamento, analytics nem identificadores. Além dos nomes dos blocos de mapa baixados e dos relatos que você decidir publicar, o aplicativo não transmite dados.</p>
+<p>Não há contas, anúncios, rastreamento, analytics nem identificadores. Além das áreas de mapa baixadas e dos relatos que você decidir publicar, o aplicativo não transmite dados.</p>
 <h2>Funcionamento em segundo plano</h2>
 <p>Depois que você aceita o aviso inicial, o aplicativo mantém um serviço em primeiro plano, com notificação permanente, para continuar medindo a velocidade e emitindo alertas quando a tela está bloqueada ou outro aplicativo (como um navegador GPS) está visível. Você pode interromper o serviço a qualquer momento pelo botão <strong>Parar</strong> da notificação.</p>
 <h2>Permissões</h2>

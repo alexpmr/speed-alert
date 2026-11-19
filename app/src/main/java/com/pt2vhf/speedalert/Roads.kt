@@ -28,7 +28,7 @@ class Roads(context:Context) {
     @Volatile private var summary:String="?"
     fun regionLabel(id:String)=when(id) {
       "centro-oeste"->"Centro-Oeste"; "sul"->"Sul"; "sudeste"->"Sudeste"
-      "df","df_roads_v3"->"DF e entorno"; else->"bloco "+id }
+      "df","df_roads_v3"->"DF e entorno"; "online"->"OpenStreetMap"; else->"bloco "+id }
     /** Build date(s) of the loaded offline databases, for bug reports. */
     fun dataVersion(@Suppress("UNUSED_PARAMETER") context:Context):String=summary
 
@@ -67,6 +67,7 @@ class Roads(context:Context) {
       // Remove the pre-1.0.7 single-file copy.
       File(app.filesDir,"df_roads_v3.sqlite").delete()
       out.addAll(TileStore.files(app))
+      out.addAll(OnlineTiles.files(app))
       return out
     }
   }

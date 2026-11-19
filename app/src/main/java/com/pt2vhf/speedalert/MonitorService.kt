@@ -37,16 +37,24 @@ class MonitorService:Service() {
   @Volatile private var tilesRunning=false
   /** Download/refresh the 3x3 tiles around the driver off the main thread; reload when changed. */
   private fun maintainTiles(lat:Double,lon:Double) {
+    // Key includes the ~11 km online cell, so entering a new cell triggers a check.
     val here=TileStore.tileId(lat,lon)
+    val key=here+"/"+Math.floor(lat*10).toInt()+"_"+Math.floor(lon*10).toInt()
     val now=SystemClock.elapsedRealtime()
-    if(tilesRunning || (here==tilesFor && now-tilesAt<10*60_000L))return
-    tilesFor=here; tilesAt=now; tilesRunning=true
+    if(tilesRunning || (key==tilesFor && now-tilesAt<10*60_000L))return
+    tilesFor=key; tilesAt=now; tilesRunning=true
     Thread {
       try {
         val keep=TileStore.around(lat,lon)
         val changed=TileStore.ensure(this,keep)
         val evicted=TileStore.evict(this,keep)
-        if(changed || evicted)handler.post { loadRoads() }
+        var online=false
+        if(BuildConfig.ONLINE_TILES && !TileStore.listed(this,here) && TileStore.networkAllowed(this)) {
+          online=OnlineTiles.ensure(this,lat,lon)
+          // Overpass busy or offline: try again in about a minute, not ten.
+          if(OnlineTiles.lastError!=null)handler.post { tilesAt=SystemClock.elapsedRealtime()-9*60_000L }
+        }
+        if(changed || evicted || online)handler.post { loadRoads() }
       } catch(e:Exception) { android.util.Log.w("PT2VHF.Tiles","maintain",e) }
       finally { tilesRunning=false }
     }.apply { name="pt2vhf-tiles";start() }
@@ -134,6 +142,8 @@ class MonitorService:Service() {
         .let { r -> if(r.source.startsWith("REGIÃO SEM BASE") || r.source.startsWith("BASE OFFLINE INDISPONÍVEL"))
           r.copy(source=if(TileStore.busy || tilesRunning)"BAIXANDO BASE DESTA REGIÃO…"
             else if(!TileStore.networkAllowed(this))"SEM BASE AQUI: conecte à Internet para baixar"
+            else if(BuildConfig.ONLINE_TILES) OnlineTiles.lastError?.let { "FALHA AO BAIXAR DO OPENSTREETMAP — tentando de novo" }
+              ?: "SEM DADOS DO OPENSTREETMAP AQUI"
             else "REGIÃO SEM COBERTURA (Centro-Oeste, Sudeste e Sul)") else r }
         .also { road=it; if(AppConfig.offline(prefs))maintainTiles(loc.latitude,loc.longitude) }
     }
