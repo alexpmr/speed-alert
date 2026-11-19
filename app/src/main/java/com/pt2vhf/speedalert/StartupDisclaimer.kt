@@ -15,7 +15,8 @@ object StartupDisclaimer {
     "pelo servidor. As duas opções podem ser desativadas em Configurações.\n\n"
   private const val PRIVACY_PLAY =
     "Localização, velocidade e trajetos são processados somente no aparelho. "+
-    "Nada é enviado, exceto relatos de erro que você decidir publicar no OpenStreetMap.\n\n"
+    "Para baixar o mapa, só é enviada a área aproximada (nome do bloco ou limites de uma área "+
+    "de ~11 km), nunca a posição exata. Relatos de erro só vão ao OpenStreetMap se você publicar.\n\n"
   fun show(activity: Activity, onContinue: () -> Unit) {
     val message = (
       "O PT2VHF Speed Alert é uma ferramenta auxiliar e experimental.\n\n"+
