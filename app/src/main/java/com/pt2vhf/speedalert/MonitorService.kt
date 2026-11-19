@@ -39,7 +39,7 @@ class MonitorService:Service() {
   private fun maintainTiles(lat:Double,lon:Double) {
     // Key includes the ~11 km online cell, so entering a new cell triggers a check.
     val here=TileStore.tileId(lat,lon)
-    val key=here+"/"+Math.floor(lat*10).toInt()+"_"+Math.floor(lon*10).toInt()
+    val key=here+"/"+OnlineTiles.key(lat,lon)
     val now=SystemClock.elapsedRealtime()
     if(tilesRunning || (key==tilesFor && now-tilesAt<10*60_000L))return
     tilesFor=key; tilesAt=now; tilesRunning=true

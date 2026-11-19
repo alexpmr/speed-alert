@@ -16,14 +16,20 @@ object OsmTags {
     if(v<10 || v>160)return null
     return if(m.groupValues[2]=="mph") (v*1.609344*100).roundToLong()/100.0 else v.toDouble()
   }
+  /** Minor roads are kept only with an explicit limit ("slim" profile, as the regional tiles). */
+  val MINOR=setOf("residential","unclassified","living_street","service")
+
   /** Forward and backward limit of a way, or null when the way should be skipped. */
   fun limits(tags:Map<String,String>):Pair<Double?,Double?>? {
-    if(tags["highway"] !in HIGHWAYS)return null
+    val highway=tags["highway"]
+    if(highway !in HIGHWAYS)return null
     val (fwd,bwd)=if(tags["maxspeed:conditional"]!=null) null to null else {
       val shared=kmh(tags["maxspeed"])
       (kmh(tags["maxspeed:forward"])?:shared) to (kmh(tags["maxspeed:backward"])?:shared)
     }
+    val limited=fwd!=null || bwd!=null
     val named=!tags["name"].isNullOrBlank() || !tags["ref"].isNullOrBlank()
-    return if(named || fwd!=null || bwd!=null) fwd to bwd else null
+    if(!limited && (!named || highway in MINOR))return null
+    return fwd to bwd
   }
 }

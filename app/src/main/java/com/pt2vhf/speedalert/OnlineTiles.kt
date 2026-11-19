@@ -32,11 +32,19 @@ object OnlineTiles {
   fun usage(c:Context):Pair<Int,Long> = files(c).let { l -> l.size to l.sumOf { it.second.length() } }
 
   private fun name(la:Int,lo:Int)="o${la}_${lo}"
-  /** The driver's cell first, then its 8 neighbours. */
+  /**
+   * The driver's cell first, then only the neighbours whose edge is within ~3 km
+   * (Overpass allows few requests per IP; a dense city cell is ~1 MB gzip).
+   */
   private fun around(lat:Double,lon:Double):List<Pair<Int,Int>> {
     val la=floor(lat*10).toInt(); val lo=floor(lon*10).toInt()
-    return listOf(la to lo)+(-1..1).flatMap { a -> (-1..1).map { b -> la+a to lo+b } }.filter { it!=la to lo }
+    val m=0.03
+    val dLa=listOf(0)+(if(lat*10-la<m*10)listOf(-1) else emptyList())+(if(la+1-lat*10<m*10)listOf(1) else emptyList())
+    val dLo=listOf(0)+(if(lon*10-lo<m*10)listOf(-1) else emptyList())+(if(lo+1-lon*10<m*10)listOf(1) else emptyList())
+    return dLa.flatMap { a -> dLo.map { b -> la+a to lo+b } }
   }
+  /** Changes when the set of cells needed here changes (the service re-checks then). */
+  fun key(lat:Double,lon:Double)=around(lat,lon).joinToString(",") { name(it.first,it.second) }
 
   /** Blocking (worker thread). Returns true when a cell file changed and Roads must reload. */
   @Synchronized fun ensure(c:Context,lat:Double,lon:Double):Boolean {
@@ -64,9 +72,12 @@ object OnlineTiles {
 
   private fun query(la:Int,lo:Int):String {
     val bbox=String.format(Locale.US,"%.1f,%.1f,%.1f,%.1f",la/10.0,lo/10.0,(la+1)/10.0,(lo+1)/10.0)
-    val way="way[\"highway\"~\"^(${OsmTags.HIGHWAYS.joinToString("|")})$\"]"
-    val keys=listOf("maxspeed","maxspeed:forward","maxspeed:backward","name","ref")
-    return "[out:json][timeout:90];("+keys.joinToString("") { "$way[\"$it\"]($bbox);" }+");out tags geom;"
+    // Any road with a limit; named/numbered roads only if major (OsmTags slim profile).
+    val all="way[\"highway\"~\"^(${OsmTags.HIGHWAYS.joinToString("|")})$\"]"
+    val major="way[\"highway\"~\"^(${(OsmTags.HIGHWAYS-OsmTags.MINOR).joinToString("|")})$\"]"
+    val parts=listOf("maxspeed","maxspeed:forward","maxspeed:backward").map { "$all[\"$it\"]($bbox);" }+
+      listOf("name","ref").map { "$major[\"$it\"]($bbox);" }
+    return "[out:json][timeout:90];("+parts.joinToString("")+");out tags geom;"
   }
 
   private fun build(c:Context,la:Int,lo:Int,target:File) {

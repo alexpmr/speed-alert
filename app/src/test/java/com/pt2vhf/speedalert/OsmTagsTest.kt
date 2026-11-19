@@ -16,13 +16,15 @@ class OsmTagsTest {
     val t=mapOf("highway" to "primary","maxspeed" to "60","maxspeed:backward" to "40")
     assertEquals(60.0 to 40.0,OsmTags.limits(t))
   }
-  @Test fun conditionalLimitKeepsRoadWithoutSpeed() {
-    val t=mapOf("highway" to "primary","maxspeed" to "60","maxspeed:conditional" to "30 @ (Mo-Fr)","name" to "Rua A")
+  @Test fun conditionalLimitKeepsNamedMajorRoadWithoutSpeed() {
+    val t=mapOf("highway" to "primary","maxspeed" to "60","maxspeed:conditional" to "30 @ (Mo-Fr)","name" to "Av. A")
     assertEquals(null to null,OsmTags.limits(t))
   }
-  @Test fun skipsNonRoadsAndAnonymousRoadsWithoutSpeed() {
+  @Test fun slimProfileSkipsMinorRoadsWithoutSpeed() {
     assertNull(OsmTags.limits(mapOf("highway" to "footway","maxspeed" to "10")))
-    assertNull(OsmTags.limits(mapOf("highway" to "service")))
-    assertNotNull(OsmTags.limits(mapOf("highway" to "residential","name" to "Rua B")))
+    assertNull(OsmTags.limits(mapOf("highway" to "primary")))
+    assertNull(OsmTags.limits(mapOf("highway" to "residential","name" to "Rua B")))
+    assertEquals(30.0 to 30.0,OsmTags.limits(mapOf("highway" to "residential","maxspeed" to "30")))
+    assertNotNull(OsmTags.limits(mapOf("highway" to "secondary","ref" to "DF-001")))
   }
 }
