@@ -21,7 +21,9 @@ class AlarmAudio(context:Context) {
     private data class Segment(val duration:Int,val hz0:Double,val hz1:Double=hz0)
     private val manager=context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private val audioAttributes=AudioAttributes.Builder()
-        .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+        // Navigation guidance (like Waze/Maps): follows media volume and car Bluetooth.
+        // SONIFICATION used the system stream, silent on some phones even at full media volume.
+        .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
         .build()
     private val audioRate=22050
@@ -69,6 +71,15 @@ class AlarmAudio(context:Context) {
         return output
     }
 
+    /** Last start failure, shown by Settings → Testar som (null = playing fine). */
+    @Volatile var lastError:String?=null; private set
+    @Volatile private var playing=false
+    private var thread:Thread?=null
+
+    /**
+     * Streams the looping pattern from a worker thread (MODE_STREAM). The static-buffer
+     * loop used since 1.0.4 was created and released at once on HyperOS, never playing.
+     */
     @Synchronized
     fun setAlert(active:Boolean,style:String,volume:Int,beep:Int,pause:Int) {
         if(!active || volume<=0) {stop();return}
@@ -76,12 +87,13 @@ class AlarmAudio(context:Context) {
         val level=volume.coerceIn(0,100)
         if(playback!=null && key==currentPattern) {
             if(level!=currentVolume) {
-                playback?.setVolume(level/100f)
+                try { playback?.setVolume(level/100f) } catch(_:Exception) {}
                 currentVolume=level
             }
             return
         }
         stop()
+        var step="criar"
         try {
             val bytes=pcm(style,beep,pause)
             val format=AudioFormat.Builder()
@@ -89,98 +101,51 @@ class AlarmAudio(context:Context) {
                 .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
                 .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
                 .build()
+            val min=AudioTrack.getMinBufferSize(audioRate,AudioFormat.CHANNEL_OUT_MONO,AudioFormat.ENCODING_PCM_16BIT)
             val player=AudioTrack.Builder()
                 .setAudioAttributes(audioAttributes)
                 .setAudioFormat(format)
-                .setBufferSizeInBytes(bytes.size)
-                .setTransferMode(AudioTrack.MODE_STATIC)
+                .setBufferSizeInBytes(maxOf(min,4096))
+                .setTransferMode(AudioTrack.MODE_STREAM)
                 .build()
+            step="inicializar"
             if(player.state!=AudioTrack.STATE_INITIALIZED) {
                 player.release()
-                throw IllegalStateException("AudioTrack initialization failed")
+                throw IllegalStateException("estado ${player.state}")
             }
-            if(player.write(bytes,0,bytes.size)!=bytes.size) {
-                player.release()
-                throw IllegalStateException("Could not write looping alarm")
-            }
-            if(player.setLoopPoints(0,bytes.size/2,-1)!=AudioTrack.SUCCESS) {
-                player.release()
-                throw IllegalStateException("Could not configure looping alarm")
-            }
+            step="foco"
             val request=AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
                 .setAudioAttributes(audioAttributes)
                 .setOnAudioFocusChangeListener(focusListener,Handler(Looper.getMainLooper()))
                 .build()
             manager.requestAudioFocus(request)
             focus=request
+            step="tocar"
+            player.setVolume(level/100f)
+            player.play()
             playback=player
             currentPattern=key
             currentVolume=level
-            player.setVolume(level/100f)
-            player.play()
+            playing=true
+            thread=Thread {
+                try { while(playing) { if(player.write(bytes,0,bytes.size)<0)break } }
+                catch(e:Exception) { Log.e("PT2VHF.Audio","write",e) }
+                finally { try { player.stop() } catch(_:Exception) {}; player.release() }
+            }.apply { name="pt2vhf-alarm";start() }
+            lastError=null
         }catch(e:Exception) {
-            Log.e("PT2VHF.Audio","Could not start background alarm",e)
+            lastError="falha ao $step: "+(e.message?:e.javaClass.simpleName)
+            Log.e("PT2VHF.Audio","Could not start alarm ($step)",e)
             stop()
-        }
-    }
-    /**
-     * Short two-tone chime (radar ahead). Never interrupts a looping alarm:
-     * if one is already playing, the chime is skipped.
-     */
-    @Synchronized
-    fun chime(volume:Int) {
-        if(playback!=null || volume<=0)return
-        try {
-            val tones=listOf(Segment(170,1320.0),Segment(40,0.0),Segment(260,990.0))
-            val count=tones.sumOf {it.duration*audioRate/1000}
-            val bytes=ByteArray(count*2)
-            var offset=0
-            var phase=0.0
-            for(segment in tones) {
-                val len=segment.duration*audioRate/1000
-                for(i in 0 until len) {
-                    val amp=if(segment.hz0==0.0)0.0 else {
-                        phase+=2.0*PI*segment.hz0/audioRate
-                        sin(phase)*min(1.0,min(i,len-1-i)/150.0)*0.66
-                    }
-                    val value=(amp*32767.0).toInt().coerceIn(-32768,32767)
-                    bytes[offset++]=(value and 255).toByte()
-                    bytes[offset++]=((value ushr 8) and 255).toByte()
-                }
-            }
-            val player=AudioTrack.Builder()
-                .setAudioAttributes(audioAttributes)
-                .setAudioFormat(AudioFormat.Builder().setSampleRate(audioRate)
-                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT).build())
-                .setBufferSizeInBytes(bytes.size)
-                .setTransferMode(AudioTrack.MODE_STATIC)
-                .build()
-            if(player.state!=AudioTrack.STATE_INITIALIZED || player.write(bytes,0,bytes.size)!=bytes.size) {
-                player.release();return
-            }
-            val request=AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
-                .setAudioAttributes(audioAttributes).build()
-            manager.requestAudioFocus(request)
-            player.setVolume(volume.coerceIn(0,100)/100f)
-            player.play()
-            Handler(Looper.getMainLooper()).postDelayed({
-                try { player.stop() } catch(_:Exception) {}
-                player.release()
-                manager.abandonAudioFocusRequest(request)
-            },count*1000L/audioRate+150L)
-        }catch(e:Exception) {
-            Log.e("PT2VHF.Audio","Could not play radar chime",e)
         }
     }
     @Synchronized
     fun stop() {
-        try {
-            playback?.pause()
-            playback?.flush()
-            playback?.release()
-        }catch(_:Exception){}
+        playing=false
+        // stop() makes the blocked write() return; the worker thread then releases the track.
+        try { playback?.stop() } catch(_:Exception){}
         playback=null
+        thread=null
         focus?.let {manager.abandonAudioFocusRequest(it)}
         focus=null
         currentPattern=""

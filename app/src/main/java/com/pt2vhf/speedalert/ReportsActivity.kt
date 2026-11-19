@@ -82,7 +82,7 @@ class ReportsActivity:Activity() {
       setSelection(keys.indexOf(r.type).coerceAtLeast(0))
     }
     val correct=EditText(this).apply {
-      hint="Valor correto no local (ex.: 70 km/h, sem radar)";setText(r.correct)
+      hint="Valor correto no local (ex.: 70 km/h)";setText(r.correct)
       inputType=InputType.TYPE_CLASS_TEXT
     }
     val comment=EditText(this).apply {
@@ -119,7 +119,7 @@ class ReportsActivity:Activity() {
   private fun share(r:Reports.Report) {
     startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
       type="text/plain"
-      putExtra(Intent.EXTRA_SUBJECT,"PT2VHF Speed Alert — erro de limite/radar")
+      putExtra(Intent.EXTRA_SUBJECT,"PT2VHF Speed Alert — erro de limite")
       putExtra(Intent.EXTRA_TEXT,Reports.noteText(r)+"\nhttps://www.openstreetmap.org/?mlat=%.5f&mlon=%.5f#map=18/%.5f/%.5f"
         .format(Locale.US,r.lat,r.lon,r.lat,r.lon))
     },"Compartilhar relato"))

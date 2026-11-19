@@ -11,7 +11,7 @@ import android.widget.*
 
 class SettingsActivity : Activity() {
   private val p by lazy { AppConfig.prefs(this) }
-  private lateinit var manualLimit: EditText
+  private lateinit var manualLimit: SeekBar
   private lateinit var beepMs: EditText
   private lateinit var pauseMs: EditText
   private val navy = Color.rgb(12,20,29)
@@ -49,10 +49,10 @@ class SettingsActivity : Activity() {
     add(root,field)
     return field
   }
-  private fun seek(root:LinearLayout,title:String,key:String,default:Int,maximum:Int,suffix:String) {
+  private fun seek(root:LinearLayout,title:String,key:String,default:Int,maximum:Int,suffix:String,minimum:Int=0):SeekBar {
     val caption=label("",15f)
     add(root,caption)
-    val bar=SeekBar(this).apply { max=maximum;progress=p.getInt(key,default).coerceIn(0,maximum) }
+    val bar=SeekBar(this).apply { min=minimum;max=maximum;progress=p.getInt(key,default).coerceIn(minimum,maximum) }
     caption.text=title+": "+bar.progress+suffix
     bar.setOnSeekBarChangeListener(object:SeekBar.OnSeekBarChangeListener {
       override fun onProgressChanged(s:SeekBar?,value:Int,user:Boolean) {
@@ -63,6 +63,7 @@ class SettingsActivity : Activity() {
       override fun onStopTrackingTouch(s:SeekBar?){}
     })
     add(root,bar)
+    return bar
   }
   override fun onCreate(savedInstanceState:Bundle?) {
     super.onCreate(savedInstanceState)
@@ -78,16 +79,25 @@ class SettingsActivity : Activity() {
     val useManual=toggle(root,"Usar limite manual","manual",false) { enabled ->
       manualLimit.isEnabled=enabled
     }
-    manualLimit=edit(root,"Limite manual (10–160 km/h)",AppConfig.manualLimit(p))
+    manualLimit=seek(root,"Limite manual","manualLimit",60,160," km/h",minimum=10)
     manualLimit.isEnabled=useManual.isChecked
     seek(root,"Tolerância de velocidade","tolerance",0,20," km/h")
-    seek(root,"Distância para aviso de radar","radarRange",300,1000," m")
-    toggle(root,"Bipe curto ao se aproximar de radar","radarChime",true)
-    add(root,label("Toca uma vez por radar ao entrar na distância acima, mesmo dentro do limite. Com excesso de velocidade perto do radar, toca o tom contínuo.",12f,Color.LTGRAY))
     toggle(root,"Mostrar coordenadas GPS e \"Marcar erro\" na tela","showCoords",true)
     add(root,label("Linha discreta abaixo da via. Toque nas coordenadas para copiar; \"Marcar erro\" guarda o local para relatar depois.",12f,Color.LTGRAY))
     add(root,label("ALARME SONORO",18f,green))
     seek(root,"Volume relativo","volume",80,100,"%")
+    add(root,label("O alarme segue o volume de MÍDIA do celular (ou do carro, no Bluetooth).",12f,Color.LTGRAY))
+    add(root,Button(this).apply {
+      text="TESTAR SOM (2 s)"
+      setOnClickListener { button ->
+        save()
+        val test=AlarmAudio(this@SettingsActivity)
+        test.setAlert(true,AppConfig.mode(p),AppConfig.volume(p).coerceAtLeast(1),AppConfig.beepMs(p),AppConfig.pauseMs(p))
+        test.lastError?.let { Toast.makeText(this@SettingsActivity,"Som: $it",Toast.LENGTH_LONG).show() }
+        button.isEnabled=false
+        button.postDelayed({ test.close(); button.isEnabled=true },2000L)
+      }
+    })
     add(root,label("Tipo de alarme",14f))
     val options=arrayOf("Bipes simples","Bipes duplos","Bipes triplos",
       "Sirene alternada","Alerta suave","Tom ininterrupto")
@@ -167,8 +177,7 @@ class SettingsActivity : Activity() {
   private fun save() {
     fun value(field:EditText,original:Int,min:Int,max:Int):Int =
       (field.text.toString().toIntOrNull()?:original).coerceIn(min,max)
-    p.edit().putInt("manualLimit",value(manualLimit,AppConfig.manualLimit(p),10,160))
-      .putInt("beepMs",value(beepMs,AppConfig.beepMs(p),100,1000))
+    p.edit().putInt("beepMs",value(beepMs,AppConfig.beepMs(p),100,1000))
       .putInt("pauseMs",value(pauseMs,AppConfig.pauseMs(p),100,2000)).apply()
   }
   @Deprecated("Activity result API used for compatibility with Android 8+")
@@ -189,7 +198,6 @@ class SettingsActivity : Activity() {
           String(bytes,Charsets.UTF_8)
         } ?: error("Não foi possível ler o arquivo")
         val count=SettingsBackup.import(p,text)
-        manualLimit.setText(AppConfig.manualLimit(p).toString())
         beepMs.setText(AppConfig.beepMs(p).toString())
         pauseMs.setText(AppConfig.pauseMs(p).toString())
         UpdateScheduler.sync(this)
@@ -208,15 +216,21 @@ class SettingsActivity : Activity() {
   /** Map data in ~110 km tiles: downloaded around the driver, kept for trips, evicted when unused. */
   private fun tilesSection(root:LinearLayout) {
     add(root,label("BASE OFFLINE POR BLOCOS",18f,green))
-    add(root,label("Limites e radares são baixados em blocos de cerca de 110 km ao redor de onde você está, "+
+    add(root,label("Limites de velocidade são baixados em blocos de cerca de 110 km ao redor de onde você está, "+
       "e os não usados há 30 dias são apagados. Cobertura: Centro-Oeste, Sudeste e Sul. "+
-      "Antes de viajar para um lugar sem sinal, baixe a região inteira.",12f,Color.LTGRAY))
+      "Antes de viajar para um lugar sem sinal, baixe a região inteira."+
+      (if(BuildConfig.ONLINE_TILES)"\n\nNo resto do Brasil e do mundo, o app baixa áreas de cerca de 11 km direto do "+
+        "OpenStreetMap (servidor público Overpass) enquanto você dirige. Só os limites da área são enviados, "+
+        "não a sua posição exata." else ""),12f,Color.LTGRAY))
     val status=label("",13f)
     add(root,status)
     fun refresh() {
       val (n,bytes)=TileStore.usage(this)
+      val (on,onBytes)=OnlineTiles.usage(this)
       status.text="$n blocos no aparelho • ${(bytes+524287)/1048576} MB • dados OSM de ${TileStore.dataDate(this)}"+
-        (if(TileStore.busy)" • baixando…" else "")+(TileStore.lastError?.let { " • último erro: $it" }?:"")
+        (if(BuildConfig.ONLINE_TILES)" • $on áreas online (${(onBytes+524287)/1048576} MB)" else "")+
+        (if(TileStore.busy)" • baixando…" else "")+
+        ((TileStore.lastError?:OnlineTiles.lastError)?.let { " • último erro: $it" }?:"")
     }
     refresh()
     toggle(root,"Baixar blocos só no Wi-Fi","tilesWifiOnly",false)
@@ -251,7 +265,7 @@ class SettingsActivity : Activity() {
         android.app.AlertDialog.Builder(this@SettingsActivity).setTitle("Apagar blocos?")
           .setMessage("Os blocos ao redor serão baixados de novo automaticamente quando houver Internet.")
           .setNegativeButton("Cancelar",null)
-          .setPositiveButton("Apagar") { _,_ -> TileStore.clear(this@SettingsActivity);reloadMonitor();refresh() }
+          .setPositiveButton("Apagar") { _,_ -> TileStore.clear(this@SettingsActivity);OnlineTiles.clear(this@SettingsActivity);reloadMonitor();refresh() }
           .show()
       }
     })

@@ -12,8 +12,7 @@ import java.util.Locale
 class MonitorService:Service() {
   data class State(
     val speed:Double,val limit:Double,val status:String,val source:String,val alarm:Boolean,
-    val roadName:String="Via não identificada",val radarMeters:Double?=null,
-    val radarActive:Boolean=false,val muted:Boolean=false,
+    val roadName:String="Via não identificada",val muted:Boolean=false,
     val gpsAccuracy:Float=-1f,
     val lat:Double=Double.NaN,val lon:Double=Double.NaN,val bearing:Float=-1f,
     val wayId:Long=0L
@@ -38,16 +37,24 @@ class MonitorService:Service() {
   @Volatile private var tilesRunning=false
   /** Download/refresh the 3x3 tiles around the driver off the main thread; reload when changed. */
   private fun maintainTiles(lat:Double,lon:Double) {
+    // Key includes the ~11 km online cell, so entering a new cell triggers a check.
     val here=TileStore.tileId(lat,lon)
+    val key=here+"/"+OnlineTiles.key(lat,lon)
     val now=SystemClock.elapsedRealtime()
-    if(tilesRunning || (here==tilesFor && now-tilesAt<10*60_000L))return
-    tilesFor=here; tilesAt=now; tilesRunning=true
+    if(tilesRunning || (key==tilesFor && now-tilesAt<10*60_000L))return
+    tilesFor=key; tilesAt=now; tilesRunning=true
     Thread {
       try {
         val keep=TileStore.around(lat,lon)
         val changed=TileStore.ensure(this,keep)
         val evicted=TileStore.evict(this,keep)
-        if(changed || evicted)handler.post { loadRoads() }
+        var online=false
+        if(BuildConfig.ONLINE_TILES && !TileStore.listed(this,here) && TileStore.networkAllowed(this)) {
+          online=OnlineTiles.ensure(this,lat,lon)
+          // Overpass busy or offline: try again in about a minute, not ten.
+          if(OnlineTiles.lastError!=null)handler.post { tilesAt=SystemClock.elapsedRealtime()-9*60_000L }
+        }
+        if(changed || evicted || online)handler.post { loadRoads() }
       } catch(e:Exception) { android.util.Log.w("PT2VHF.Tiles","maintain",e) }
       finally { tilesRunning=false }
     }.apply { name="pt2vhf-tiles";start() }
@@ -66,8 +73,10 @@ class MonitorService:Service() {
   private lateinit var audio:AlarmAudio
   private var running=false
   private var lastFix=0L
-  private var lastChimeKey:String?=null
-  private var lastChimeAt=0L
+  // GPS may arrive at 10 Hz; the road lookup (SQLite) runs at most once a second.
+  private var road:Roads.Result?=null
+  private var roadAt=0L
+  private var notifiedAt=0L
   private val checkStale=object:Runnable {
     override fun run() {
       if(running && SystemClock.elapsedRealtime()-lastFix>5000L)
@@ -90,13 +99,7 @@ class MonitorService:Service() {
       NotificationChannel("speed","PT2VHF velocidade",NotificationManager.IMPORTANCE_LOW))
   }
   override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int {
-    if(intent?.action==STOP) {
-      running=false;handler.removeCallbacks(checkStale);audio.stop()
-      try { locationManager.removeUpdates(listener) } catch(_:Exception){}
-      stopForeground(STOP_FOREGROUND_REMOVE);stopSelf()
-      latest=null
-      return START_NOT_STICKY
-    }
+    if(intent?.action==STOP) { shutdown(); return START_NOT_STICKY }
     if(intent?.action==RELOAD) {
       loadRoads()
       return START_NOT_STICKY
@@ -113,8 +116,11 @@ class MonitorService:Service() {
       startForeground(101,notification("Aguardando GPS"),ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
     else startForeground(101,notification("Aguardando GPS"))
     running=true;lastFix=SystemClock.elapsedRealtime()
+    // Silencing lasts until the app is closed, so nobody drives on unknowingly muted.
+    prefs.edit().putBoolean("muted",false).apply()
     publish(State(-1.0,-1.0,"AGUARDANDO GPS","--",false))
-    try { locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,1000L,0f,listener,Looper.getMainLooper()) }
+    // 100 ms = up to 10 Hz; phones whose GNSS chip only does 1 Hz keep delivering 1 Hz.
+    try { locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,100L,0f,listener,Looper.getMainLooper()) }
     catch(_:Exception) { publish(State(-1.0,-1.0,"FALHA GPS","--",false)) }
     handler.postDelayed(checkStale,1500L)
     return START_NOT_STICKY
@@ -128,64 +134,62 @@ class MonitorService:Service() {
     }
     lastFix=SystemClock.elapsedRealtime()
     val speed=loc.speed.toDouble()*3.6
-    val loaded=roads
-    val selected=(if(!AppConfig.offline(prefs)) Roads.Result(null,"BASE OFFLINE DESATIVADA")
-      else loaded?.resolve(loc,AppConfig.radarRange(prefs).toDouble())
-        ?: Roads.Result(null,"CARREGANDO BASE OFFLINE"))
-      .let { r -> if(r.source.startsWith("REGIÃO SEM BASE") || r.source.startsWith("BASE OFFLINE INDISPONÍVEL"))
-        r.copy(source=if(TileStore.busy || tilesRunning)"BAIXANDO BASE DESTA REGIÃO…"
-          else if(!TileStore.networkAllowed(this))"SEM BASE AQUI: conecte à Internet para baixar"
-          else "REGIÃO SEM COBERTURA (Centro-Oeste, Sudeste e Sul)") else r }
-    if(AppConfig.offline(prefs))maintainTiles(loc.latitude,loc.longitude)
+    val now=SystemClock.elapsedRealtime()
+    val selected=road?.takeIf { now-roadAt<1000L } ?: run {
+      roadAt=now
+      (if(!AppConfig.offline(prefs)) Roads.Result(null,"BASE OFFLINE DESATIVADA")
+        else roads?.resolve(loc) ?: Roads.Result(null,"CARREGANDO BASE OFFLINE"))
+        .let { r -> if(r.source.startsWith("REGIÃO SEM BASE") || r.source.startsWith("BASE OFFLINE INDISPONÍVEL"))
+          r.copy(source=if(TileStore.busy || tilesRunning)"BAIXANDO BASE DESTA REGIÃO…"
+            else if(!TileStore.networkAllowed(this))"SEM BASE AQUI: conecte à Internet para baixar"
+            else if(BuildConfig.ONLINE_TILES) OnlineTiles.lastError?.let { "FALHA AO BAIXAR DO OPENSTREETMAP — tentando de novo" }
+              ?: "SEM DADOS DO OPENSTREETMAP AQUI"
+            else "REGIÃO SEM COBERTURA (Centro-Oeste, Sudeste e Sul)") else r }
+        .also { road=it; if(AppConfig.offline(prefs))maintainTiles(loc.latitude,loc.longitude) }
+    }
     val max=if(AppConfig.manual(prefs)) AppConfig.manualLimit(prefs).toDouble() else selected.limit
     val excess=max!=null && speed>max+AppConfig.tolerance(prefs)
-    val radarExcess=selected.radarDistance!=null && selected.radarLimit!=null &&
-      selected.radarDistance<=AppConfig.radarRange(prefs) &&
-      speed>selected.radarLimit+AppConfig.tolerance(prefs)
     val message=when {
-      radarExcess -> "EXCESSO PRÓXIMO AO RADAR"
       max==null -> if(AppConfig.warnUnknown(prefs)) "LIMITE DESCONHECIDO" else "SEM LIMITE IDENTIFICADO"
       excess -> "VELOCIDADE EXCEDIDA"
       else -> "DENTRO DO LIMITE"
     }
     publish(State(speed,max?:-1.0,message,
       if(AppConfig.manual(prefs)) "MANUAL • "+selected.source else selected.source,
-      excess || radarExcess,selected.roadName,selected.radarDistance,
-      radarExcess,AppConfig.muted(prefs),loc.accuracy,
+      excess,selected.roadName,AppConfig.muted(prefs),loc.accuracy,
       loc.latitude,loc.longitude,if(loc.hasBearing())loc.bearing else -1f,selected.wayId))
-    approachChime(selected,excess || radarExcess)
-  }
-  /** One short chime per camera when it first comes within the warning range. */
-  private fun approachChime(selected:Roads.Result,alarming:Boolean) {
-    val key=selected.radarKey?:return
-    val distance=selected.radarDistance?:return
-    if(distance>AppConfig.radarRange(prefs))return
-    val now=SystemClock.elapsedRealtime()
-    if(key==lastChimeKey && now-lastChimeAt<5*60_000L)return
-    lastChimeKey=key
-    lastChimeAt=now
-    if(!alarming && AppConfig.radarChime(prefs) && !AppConfig.muted(prefs))
-      audio.chime(AppConfig.volume(prefs))
   }
   private fun publish(s:State) {
     latest=s
-    audio.setAlert(s.alarm && !s.muted,
-      if(s.radarActive)"CONTINUO" else AppConfig.mode(prefs),
+    audio.setAlert(s.alarm && !s.muted,AppConfig.mode(prefs),
       AppConfig.volume(prefs),AppConfig.beepMs(prefs),AppConfig.pauseMs(prefs))
     sendBroadcast(Intent(UPDATE).setPackage(packageName).apply {
       putExtra("speed",s.speed);putExtra("limit",s.limit)
       putExtra("status",s.status);putExtra("source",s.source);putExtra("alarm",s.alarm)
-      putExtra("road",s.roadName);putExtra("radar",s.radarMeters?:-1.0)
-      putExtra("radarActive",s.radarActive);putExtra("muted",s.muted)
+      putExtra("road",s.roadName);putExtra("muted",s.muted)
       putExtra("accuracy",s.gpsAccuracy)
       putExtra("lat",s.lat);putExtra("lon",s.lon);putExtra("bearing",s.bearing)
     })
+    // Android drops notification updates faster than ~5/s; once a second is enough there.
+    val now=SystemClock.elapsedRealtime()
+    if(now-notifiedAt<1000L)return
+    notifiedAt=now
     val speed=if(s.speed>=0) String.format(Locale.US,"%.1f km/h",s.speed) else "GPS indisponível"
     try {
       (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(
         101,notification(speed+" — "+s.status))
     } catch(_:SecurityException) { /* permission denied: location service still runs */ }
   }
+  /** Exit: stop GPS, alarm and the foreground notification. */
+  private fun shutdown() {
+    running=false;handler.removeCallbacks(checkStale);audio.stop()
+    try { locationManager.removeUpdates(listener) } catch(_:Exception){}
+    prefs.edit().putBoolean("muted",false).apply()
+    stopForeground(STOP_FOREGROUND_REMOVE);stopSelf()
+    latest=null
+  }
+  /** Swiping the app away from Recents closes it for real. */
+  override fun onTaskRemoved(rootIntent:Intent?) { shutdown(); super.onTaskRemoved(rootIntent) }
   private fun notification(s:String):Notification {
     val open=PendingIntent.getActivity(this,1,Intent(this,MainActivity::class.java),
       PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)

@@ -17,7 +17,7 @@ import java.util.UUID
 /**
  * Driver error reports ("Marcar erro"). A mark is saved instantly and offline with what the
  * app was showing; the driver completes it later, while stopped, and may publish it as a
- * public OpenStreetMap note so mappers can fix the road or camera. Nothing is sent without
+ * public OpenStreetMap note so mappers can fix the road. Nothing is sent without
  * an explicit confirmation.
  */
 object Reports {
@@ -25,16 +25,13 @@ object Reports {
     val id:String,val created:Long,
     val lat:Double,val lon:Double,val accuracy:Float,val bearing:Float,
     val speed:Double,val shownLimit:Double,val road:String,val wayId:Long,
-    val radarMeters:Double,val appVersion:String,val dataVersion:String,
+    val appVersion:String,val dataVersion:String,
     val type:String="",val correct:String="",val comment:String="",
     val noteId:Long=0L
   )
   val types=linkedMapOf(
     "LIMITE" to "Limite de velocidade errado",
     "SEM_LIMITE" to "Via sem limite cadastrado",
-    "RADAR_FALTANDO" to "Radar existe mas não aparece",
-    "RADAR_INEXISTENTE" to "Radar mostrado não existe",
-    "RADAR_LIMITE" to "Limite do radar errado",
     "NOME" to "Nome da via errado",
     "OUTRO" to "Outro problema")
 
@@ -47,7 +44,7 @@ object Reports {
       Report(o.getString("id"),o.getLong("created"),o.getDouble("lat"),o.getDouble("lon"),
         o.optDouble("accuracy",-1.0).toFloat(),o.optDouble("bearing",-1.0).toFloat(),
         o.optDouble("speed",-1.0),o.optDouble("shownLimit",-1.0),o.optString("road"),
-        o.optLong("wayId",0L),o.optDouble("radarMeters",-1.0),o.optString("appVersion"),
+        o.optLong("wayId",0L),o.optString("appVersion"),
         o.optString("dataVersion"),o.optString("type"),o.optString("correct"),
         o.optString("comment"),o.optLong("noteId",0L)) } }
   } catch(_:Exception) { emptyList() }
@@ -57,7 +54,7 @@ object Reports {
     list.forEach { r -> arr.put(JSONObject().put("id",r.id).put("created",r.created)
       .put("lat",r.lat).put("lon",r.lon).put("accuracy",r.accuracy.toDouble())
       .put("bearing",r.bearing.toDouble()).put("speed",r.speed).put("shownLimit",r.shownLimit)
-      .put("road",r.road).put("wayId",r.wayId).put("radarMeters",r.radarMeters)
+      .put("road",r.road).put("wayId",r.wayId)
       .put("appVersion",r.appVersion).put("dataVersion",r.dataVersion).put("type",r.type)
       .put("correct",r.correct).put("comment",r.comment).put("noteId",r.noteId)) }
     val f=file(c); val tmp=File(f.parentFile,f.name+".tmp")
@@ -70,7 +67,7 @@ object Reports {
     if(s.lat.isNaN() || s.lon.isNaN())return null
     val version=try{c.packageManager.getPackageInfo(c.packageName,0).versionName?:"?"}catch(_:Exception){"?"}
     val r=Report(UUID.randomUUID().toString(),System.currentTimeMillis(),s.lat,s.lon,s.gpsAccuracy,
-      s.bearing,s.speed,s.limit,s.roadName,s.wayId,s.radarMeters?:-1.0,version,Roads.dataVersion(c))
+      s.bearing,s.speed,s.limit,s.roadName,s.wayId,version,Roads.dataVersion(c))
     save(c,all(c)+r)
     return r
   }
@@ -88,7 +85,7 @@ object Reports {
     appendLine()
     appendLine("Via: ${r.road.ifBlank{"não identificada"}}"+
       (if(r.wayId>0)" — https://www.openstreetmap.org/way/${r.wayId}" else ""))
-    appendLine("O app mostrava: limite ${n(r.shownLimit,"km/h")}; radar à frente ${n(r.radarMeters,"m")}")
+    appendLine("O app mostrava: limite ${n(r.shownLimit,"km/h")}")
     if(r.correct.isNotBlank())appendLine("Segundo o motorista, no local: ${r.correct}")
     if(r.comment.isNotBlank())appendLine("Comentário: ${r.comment.take(500)}")
     appendLine("Sentido de deslocamento: "+(if(r.bearing>=0)"${Math.round(r.bearing.toDouble())}°" else "—")+

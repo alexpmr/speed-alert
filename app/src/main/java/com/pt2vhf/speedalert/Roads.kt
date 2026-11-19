@@ -7,13 +7,11 @@ import android.util.Log
 import java.io.File
 import kotlin.math.*
 
-/** Offline map matching for road speeds, names and road-mounted speed cameras. */
+/** Offline map matching for road speed limits and names. */
 class Roads(context:Context) {
   data class Result(
     val limit:Double?, val source:String,
     val roadName:String="Via não identificada",
-    val radarDistance:Double?=null, val radarLimit:Double?=null,
-    val radarKey:String?=null,
     val wayId:Long=0L
   )
   /** One opened regional database and the area it covers (null = unknown, always queried). */
@@ -30,7 +28,7 @@ class Roads(context:Context) {
     @Volatile private var summary:String="?"
     fun regionLabel(id:String)=when(id) {
       "centro-oeste"->"Centro-Oeste"; "sul"->"Sul"; "sudeste"->"Sudeste"
-      "df","df_roads_v3"->"DF e entorno"; else->"bloco "+id }
+      "df","df_roads_v3"->"DF e entorno"; "online"->"OpenStreetMap"; else->"bloco "+id }
     /** Build date(s) of the loaded offline databases, for bug reports. */
     fun dataVersion(@Suppress("UNUSED_PARAMETER") context:Context):String=summary
 
@@ -69,6 +67,7 @@ class Roads(context:Context) {
       // Remove the pre-1.0.7 single-file copy.
       File(app.filesDir,"df_roads_v3.sqlite").delete()
       out.addAll(TileStore.files(app))
+      out.addAll(OnlineTiles.files(app))
       return out
     }
   }
@@ -95,7 +94,7 @@ class Roads(context:Context) {
     summary=if(dbs.isEmpty())"nenhuma" else dbs.joinToString(", ") { it.id+" "+it.built }
   }
   fun close() { dbs.forEach { try { it.db.close() } catch(_:Exception) {} } }
-  fun resolve(loc:Location, radarRangeMeters:Double=300.0):Result {
+  fun resolve(loc:Location):Result {
     if(dbs.isEmpty())return Result(null,"BASE OFFLINE INDISPONÍVEL: "+(initError ?: "erro"))
     val lat=loc.latitude;val lon=loc.longitude
     val here=dbs.filter { it.covers(lat,lon) }
@@ -148,42 +147,7 @@ class Roads(context:Context) {
       (it.speed!=best.speed || (it.name.isNotBlank() && best.name.isNotBlank() && it.name!=best.name))
     }
     if(competing)return Result(null,"VIA AMBÍGUA")
-    val roadName=best.name.ifBlank{"Via não identificada"}
-    var radarDistance:Double?=null
-    var radarLimit:Double?=null
-    var radarKey:String?=null
-    // Show an upcoming camera farther away than the audible warning threshold.
-    // The service activates the radar alarm only inside the user-selected range.
-    val radius=1500.0
-    val offset=(radius+40.0)/111320.0
-    val latTiles=(offset*1000).toInt()+2
-    val lonTiles=(offset*1000/max(0.4,cos(Math.toRadians(lat)))).toInt()+2
-    try {
-      best.db.db.rawQuery(
-        "SELECT lat,lon,speed FROM cameras WHERE wayid=? AND "+
-        "tile_lat BETWEEN ? AND ? AND tile_lon BETWEEN ? AND ?",
-        arrayOf(best.wayid.toString(),(tlat-latTiles).toString(),(tlat+latTiles).toString(),
-          (tlon-lonTiles).toString(),(tlon+lonTiles).toString())
-      ).use { c ->
-        val factor=111320.0*cos(Math.toRadians(lat))
-        while(c.moveToNext()) {
-          val east=(c.getDouble(1)-lon)*factor
-          val north=(c.getDouble(0)-lat)*111320.0
-          val dist=hypot(east,north)
-          if(dist>radius || dist<8.0)continue
-          val heading=(Math.toDegrees(atan2(east,north))+360)%360
-          if(angle(loc.bearing.toDouble(),heading)>45.0)continue
-          val posted=if(c.isNull(2))best.speed else c.getDouble(2)
-          if(posted==null)continue
-          if(dist<(radarDistance ?: Double.POSITIVE_INFINITY)) {
-            radarDistance=dist
-            radarLimit=posted
-            radarKey=String.format(java.util.Locale.US,"%.6f,%.6f",c.getDouble(0),c.getDouble(1))
-          }
-        }
-      }
-    } catch(e:Exception) {Log.w("PT2VHF.Roads","Radar lookup failed",e)}
-    return Result(best.speed,"OSM OFFLINE • "+best.db.label,roadName,radarDistance,radarLimit,radarKey,best.wayid)
+    return Result(best.speed,"OSM OFFLINE • "+best.db.label,best.name.ifBlank{"Via não identificada"},best.wayid)
   }
   private fun angle(a:Double,b:Double)=abs((a-b+540.0)%360.0-180.0)
 }

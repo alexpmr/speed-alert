@@ -7,8 +7,8 @@ android {
         applicationId="com.pt2vhf.speedalert"
         minSdk=26
         targetSdk=36
-        versionCode=108
-        versionName="1.0.8"
+        versionCode=109
+        versionName="1.0.9"
     }
     buildFeatures { buildConfig=true }
     // github: APK distributed by pt2vhf.com/GitHub, with the site OTA updater and opt-in stats.
@@ -19,10 +19,13 @@ android {
         create("github") {
             dimension="store"
             buildConfigField("boolean","OTA","true")
+            buildConfigField("boolean","ONLINE_TILES","false")
         }
         create("play") {
             dimension="store"
             buildConfigField("boolean","OTA","false")
+            // Outside the prebuilt tiles, fetch ~11 km cells from OpenStreetMap (worldwide).
+            buildConfigField("boolean","ONLINE_TILES","true")
         }
     }
     signingConfigs {
@@ -53,6 +56,7 @@ dependencies {
     implementation("androidx.core:core:1.15.0")
     "githubImplementation"("androidx.work:work-runtime-ktx:2.11.2")
     "playImplementation"("com.google.android.play:app-update:2.1.0")
+    testImplementation("junit:junit:4.13.2")
 }
 
 // The site APK bundles the DF database (not in Git) so it works offline from the first run;

@@ -9,9 +9,9 @@ import org.json.JSONObject
  */
 object SettingsBackup {
     private val booleans = listOf("keepScreenOn","offline","warnUnknown","manual",
-        "autoUpdates","shareStats","muted","radarChime","showCoords","tilesWifiOnly")
+        "autoUpdates","shareStats","showCoords","tilesWifiOnly")
     private val ranges = mapOf(
-        "tolerance" to (0..20), "radarRange" to (100..1000),
+        "tolerance" to (0..20),
         "volume" to (0..100), "manualLimit" to (10..160),
         "beepMs" to (100..1000), "pauseMs" to (100..2000), "tileLimitMb" to (100..4000)
     )

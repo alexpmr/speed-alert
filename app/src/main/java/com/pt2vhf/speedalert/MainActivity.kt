@@ -33,7 +33,6 @@ class MainActivity:Activity() {
     private val ui=Handler(Looper.getMainLooper())
     private val p by lazy {AppConfig.prefs(this)}
     private lateinit var plate:SpeedSignView
-    private lateinit var miniPlate:SpeedSignView
     private lateinit var speedBox:LinearLayout
     private lateinit var speedText:TextView
     private lateinit var unitText:TextView
@@ -41,11 +40,9 @@ class MainActivity:Activity() {
     private lateinit var roadSource:TextView
     private lateinit var monitorText:TextView
     private lateinit var monitorDot:TextView
-    private lateinit var radarValue:TextView
-    private lateinit var limitValue:TextView
-    private lateinit var gpsValue:TextView
     private lateinit var gpsBars:GpsBarsView
     private lateinit var muteButton:LinearLayout
+    private lateinit var muteIcon:ImageView
     private lateinit var muteLabel:TextView
     private lateinit var coordRow:LinearLayout
     private lateinit var coordText:TextView
@@ -56,7 +53,6 @@ class MainActivity:Activity() {
     private var lastStatus=""
     private var lastSource=""
     private var lastRoad=""
-    private var lastRadar=-1.0
     private var kmh=-1.0
     private var limit=-1.0
     private var excessive=false
@@ -79,8 +75,6 @@ class MainActivity:Activity() {
                 intent.getStringExtra("status")?:"AGUARDANDO GPS",
                 intent.getStringExtra("source")?:"--",
                 intent.getStringExtra("road")?:"Via não identificada",
-                intent.getDoubleExtra("radar",-1.0),
-                intent.getBooleanExtra("radarActive",false),
                 intent.getBooleanExtra("muted",false),
                 intent.getFloatExtra("accuracy",-1f),
                 intent.getDoubleExtra("lat",Double.NaN),
@@ -133,6 +127,9 @@ class MainActivity:Activity() {
         val ver=try{packageManager.getPackageInfo(packageName,0).versionName?:"—"}
             catch(_:Exception){"—"}
         row.addView(label(ver,10f,secondary),LinearLayout.LayoutParams(-2,dp(44)))
+        // Discreet GPS signal, top right next to the gear.
+        gpsBars=GpsBarsView(this).apply { contentDescription="Sinal GPS: aguardando" }
+        row.addView(gpsBars,LinearLayout.LayoutParams(dp(22),dp(18)).apply {marginStart=dp(8)})
         val gear=ImageButton(this).apply {
             setImageResource(R.drawable.ic_settings_24)
             contentDescription="Configurações"
@@ -153,31 +150,37 @@ class MainActivity:Activity() {
         add(head,status,-2,2)
         return head
     }
+    private fun plateSize(landscape:Boolean)=
+        dp(if(landscape)140 else if(resources.configuration.screenWidthDp<360)150 else 170)
     private fun topPlate(landscape:Boolean):View {
         val container=column()
-        val dim=dp(if(landscape)152 else if(resources.configuration.screenWidthDp<360)170 else 191)
-        plate=SpeedSignView(this)
+        val dim=plateSize(landscape)
+        plate=SpeedSignView(this).apply { contentDescription="Limite da via" }
         container.addView(plate,LinearLayout.LayoutParams(dim,dim))
-        add(container,label("Velocidade atual",19f,white,true),-2,7,7)
+        add(container,label("Velocidade atual",17f,white,true),-2,6,6)
         return container
     }
-    private fun speedDisplay():View {
+    /** Current speed in a square tile: grey unknown, green within, yellow near, red over the limit. */
+    private fun speedDisplay(landscape:Boolean):View {
+        val dim=plateSize(landscape)
         speedBox=LinearLayout(this).apply {
             gravity=Gravity.CENTER
-            orientation=LinearLayout.HORIZONTAL
-            setPadding(dp(12),0,dp(12),0)
-            background=gradient(neutral,Color.rgb(32,52,65),23,Color.rgb(104,128,147))
+            orientation=LinearLayout.VERTICAL
+            background=gradient(neutral,Color.rgb(32,52,65),20,Color.rgb(104,128,147))
             elevation=dp(5).toFloat()
+            contentDescription="Velocidade atual"
         }
-        speedText=label("—",83f,white,true).apply {
+        speedText=label("—",if(landscape)62f else 72f,white,true).apply {
             typeface=Typeface.create("sans-serif-condensed",Typeface.BOLD)
+            includeFontPadding=false
         }
-        unitText=label("km/h",23f,white,true).apply {
-            setPadding(dp(9),dp(22),0,0)
-        }
+        unitText=label("km/h",20f,white,true)
         speedBox.addView(speedText)
         speedBox.addView(unitText)
-        return speedBox
+        return LinearLayout(this).apply {
+            gravity=Gravity.CENTER
+            addView(speedBox,LinearLayout.LayoutParams(dim,dim))
+        }
     }
     private fun streetLine():View {
         val row=LinearLayout(this).apply {gravity=Gravity.CENTER_VERTICAL}
@@ -205,7 +208,7 @@ class MainActivity:Activity() {
         coordRow.addView(coordText,LinearLayout.LayoutParams(0,-2,1f))
         coordRow.addView(label("Marcar erro",11f,Color.rgb(94,214,156),true).apply {
             setPadding(dp(8),dp(6),0,dp(6))
-            contentDescription="Marcar erro de limite ou radar neste local"
+            contentDescription="Marcar erro de limite neste local"
             setOnClickListener {markError()}
         })
         add(labels,coordRow,-2,2)
@@ -235,48 +238,10 @@ class MainActivity:Activity() {
         else Toast.makeText(this,"Erro marcado. Complete com o veículo parado em Configurações → Relatos de erro.",
             Toast.LENGTH_LONG).show()
     }
-    private fun dashboardStats():View {
-        val box=LinearLayout(this).apply {
-            orientation=LinearLayout.HORIZONTAL
-            gravity=Gravity.CENTER_VERTICAL
-            setPadding(dp(5),dp(9),dp(5),dp(9))
-            background=gradient(Color.rgb(22,44,60),Color.rgb(10,27,39),18,Color.rgb(32,58,73))
-        }
-        fun cell()=column().apply{gravity=Gravity.CENTER}
-        fun sep():View=View(this).apply{setBackgroundColor(0x77647B8A)}
-        val camera=cell()
-        camera.addView(ImageView(this).apply {
-            setImageResource(R.drawable.ic_radar_camera)
-        },LinearLayout.LayoutParams(dp(27),dp(27)))
-        add(camera,label("Próximo radar",11.5f),-2,3)
-        radarValue=label("—",17f,white,true)
-        add(camera,radarValue)
-        box.addView(camera,LinearLayout.LayoutParams(0,dp(91),1f))
-        box.addView(sep(),LinearLayout.LayoutParams(dp(1),dp(67)))
-        val limitCell=cell()
-        miniPlate=SpeedSignView(this)
-        limitCell.addView(miniPlate,LinearLayout.LayoutParams(dp(36),dp(36)))
-        add(limitCell,label("Limite",11.5f))
-        limitValue=label("—",15f,white,true)
-        add(limitCell,limitValue)
-        box.addView(limitCell,LinearLayout.LayoutParams(0,dp(91),1f))
-        box.addView(sep(),LinearLayout.LayoutParams(dp(1),dp(67)))
-        val gps=cell()
-        gpsBars=GpsBarsView(this)
-        gps.addView(gpsBars,LinearLayout.LayoutParams(dp(31),dp(29)))
-        add(gps,label("GPS",11.5f),-2,3)
-        gpsValue=label("Aguarde",15f,white,true)
-        add(gps,gpsValue)
-        box.addView(gps,LinearLayout.LayoutParams(0,dp(91),1f))
-        return box
-    }
     private fun audioButton():View {
         muteButton=LinearLayout(this).apply {
             orientation=LinearLayout.HORIZONTAL
             gravity=Gravity.CENTER
-            background=gradient(Color.rgb(43,71,92),Color.rgb(19,38,52),26,
-                Color.rgb(104,146,174))
-            contentDescription="Silenciar ou reativar os alertas sonoros"
             isClickable=true
             isFocusable=true
             setOnClickListener {
@@ -287,10 +252,9 @@ class MainActivity:Activity() {
                     .setAction(MonitorService.MUTE))
             }
         }
-        muteButton.addView(ImageView(this).apply {
-            setImageResource(R.drawable.ic_mute_alert)
-        },LinearLayout.LayoutParams(dp(26),dp(26)).apply {marginEnd=dp(10)})
-        muteLabel=label("Silenciar",18f,white,true)
+        muteIcon=ImageView(this)
+        muteButton.addView(muteIcon,LinearLayout.LayoutParams(dp(26),dp(26)).apply {marginEnd=dp(10)})
+        muteLabel=label("",18f,white,true)
         muteButton.addView(muteLabel)
         return muteButton
     }
@@ -307,15 +271,13 @@ class MainActivity:Activity() {
         add(outer,content)
         add(content,header())
         val sign=topPlate(landscape)
-        val speed=speedDisplay()
+        val speed=speedDisplay(landscape)
         val road=streetLine()
-        val metrics=dashboardStats()
         val mute=audioButton()
         if(!landscape) {
             add(content,sign,-2,10,0)
-            add(content,speed,dp(110),5,4)
-            add(content,road,-2,15,15)
-            add(content,metrics,-2,0,9)
+            add(content,speed,-2,0,4)
+            add(content,road,-2,18,15)
             val centered=LinearLayout(this).apply {
                 gravity=Gravity.CENTER
                 addView(mute,LinearLayout.LayoutParams(dp(280),dp(55)))
@@ -326,12 +288,13 @@ class MainActivity:Activity() {
                 orientation=LinearLayout.HORIZONTAL
                 gravity=Gravity.CENTER_VERTICAL
             }
-            val left=column().apply {setPadding(0,0,dp(12),0)}
+            val left=LinearLayout(this).apply {
+                gravity=Gravity.CENTER
+                setPadding(0,0,dp(12),0)
+                addView(sign); addView(speed,LinearLayout.LayoutParams(-2,-2).apply {marginStart=dp(12)})
+            }
             val right=column().apply {setPadding(dp(12),0,0,0)}
-            add(left,sign)
-            add(left,speed,dp(95),3)
             add(right,road,-2,0,14)
-            add(right,metrics,-2,0,13)
             add(right,mute,dp(56))
             row.addView(left,LinearLayout.LayoutParams(0,-2,1f))
             row.addView(right,LinearLayout.LayoutParams(0,-2,1.05f))
@@ -341,16 +304,24 @@ class MainActivity:Activity() {
         EdgeToEdge.apply(this,scroll)
         setMuted(AppConfig.muted(p))
         applyCoordVisibility()
+        if(Build.VERSION.SDK_INT>=33) onBackInvokedDispatcher.registerOnBackInvokedCallback(
+            android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+            backCallback as android.window.OnBackInvokedCallback)
         StartupDisclaimer.show(this) {
             p.edit().putBoolean("statsNoticeAccepted",true).apply()
             startMonitor()
             UpdateScheduler.sync(this)
         }
     }
+    /** The button shows the CURRENT state (icon, text and colour); tapping switches it. */
     private fun setMuted(isMuted:Boolean) {
-        if(::muteLabel.isInitialized)muteLabel.text=if(isMuted)"Ativar som" else "Silenciar"
-        if(::muteButton.isInitialized)muteButton.contentDescription=
-            if(isMuted)"Reativar o som dos alarmes" else "Silenciar os alarmes"
+        if(!::muteButton.isInitialized)return
+        muteIcon.setImageResource(if(isMuted)R.drawable.ic_mute_alert else R.drawable.ic_volume_on)
+        muteLabel.text=if(isMuted)"Som DESLIGADO" else "Som ligado"
+        muteButton.background=if(isMuted)gradient(red,redDark,26,Color.rgb(255,174,181))
+            else gradient(Color.rgb(43,71,92),Color.rgb(19,38,52),26,Color.rgb(104,146,174))
+        muteButton.contentDescription=if(isMuted)"Som dos alarmes desligado. Toque para ligar."
+            else "Som dos alarmes ligado. Toque para silenciar."
     }
     private fun updateColors() {
         if(!::speedBox.isInitialized)return
@@ -367,7 +338,7 @@ class MainActivity:Activity() {
             kmh>=limit*0.95 -> Color.rgb(255,234,95)
             else -> Color.rgb(33,237,86)
         }
-        speedBox.background=gradient(colors[0],colors[1],23,border)
+        speedBox.background=gradient(colors[0],colors[1],20,border)
         val textColor=if(!excessive && kmh>=0 && limit>0 && kmh>=limit*0.95)
             Color.BLACK else white
         speedText.setTextColor(textColor)
@@ -375,10 +346,10 @@ class MainActivity:Activity() {
         speedBox.elevation=dp(if(excessive&&blink)12 else 5).toFloat()
     }
     private fun show(v:Double,max:Double,status:String,source:String,street:String,
-                     radar:Double,radarWarning:Boolean,isMuted:Boolean,accuracy:Float,
+                     isMuted:Boolean,accuracy:Float,
                      lat:Double=Double.NaN,lon:Double=Double.NaN,bearing:Float=-1f) {
         fixLat=lat;fixLon=lon;fixBearing=bearing;fixAccuracy=accuracy
-        lastStatus=status;lastSource=source;lastRoad=street;lastRadar=radar
+        lastStatus=status;lastSource=source;lastRoad=street
         coordText.text=coordinates()?.let { c ->
             "GPS "+c.replace(",",", ")+
                 (if(accuracy>=0)" ±${accuracy.roundToInt()}m" else "")+
@@ -388,12 +359,8 @@ class MainActivity:Activity() {
         limit=max
         speedText.text=if(v>=0)v.roundToInt().toString() else "—"
         plate.limit=if(max>0)max.roundToInt().toString() else "—"
-        miniPlate.limit=plate.limit
-        limitValue.text=if(max>0)max.roundToInt().toString()+" km/h" else "—"
         roadText.text=street.ifBlank{"Via não identificada"}
         roadSource.text=source.ifBlank{"Fonte indisponível"}
-        radarValue.text=if(radar>=0)radar.roundToInt().toString()+" m" else "—"
-        radarValue.setTextColor(if(radarWarning)Color.rgb(255,93,93) else white)
         gpsBars.level=when {
             accuracy<0f -> 0
             accuracy<=10f -> 4
@@ -401,22 +368,26 @@ class MainActivity:Activity() {
             accuracy<=35f -> 2
             else -> 1
         }
-        gpsValue.text=when(gpsBars.level) {
-            4->"Forte"
-            3->"Bom"
-            2->"Regular"
-            1->"Fraco"
-            else->"Aguarde"
+        gpsBars.contentDescription="Sinal GPS: "+when(gpsBars.level) {
+            4->"forte"
+            3->"bom"
+            2->"regular"
+            1->"fraco"
+            else->"aguardando"
         }
         monitorText.text=if(status=="MONITORAMENTO PARADO")"Monitoramento parado"
             else "Monitoramento ativo"
         monitorDot.setTextColor(if(status=="GPS DESLIGADO" || status=="FALHA GPS")
             Color.rgb(255,181,48) else Color.rgb(0,228,67))
+        val was=excessive
         excessive=v>=0 && max>0 && v>max
-        ui.removeCallbacks(flash)
-        blink=true
+        // Fixes arrive up to 10x/s: restart the blink only when the state changes.
+        if(excessive!=was) {
+            ui.removeCallbacks(flash)
+            blink=true
+            if(excessive)ui.postDelayed(flash,450L)
+        }
         updateColors()
-        if(excessive)ui.postDelayed(flash,450L)
         setMuted(isMuted)
     }
     private fun startMonitor() {
@@ -455,9 +426,29 @@ class MainActivity:Activity() {
         )
         MonitorService.latest?.let {
             show(it.speed,it.limit,it.status,it.source,it.roadName,
-                it.radarMeters?:-1.0,it.radarActive,it.muted,it.gpsAccuracy,it.lat,it.lon,it.bearing)
+                it.muted,it.gpsAccuracy,it.lat,it.lon,it.bearing)
         }
     }
+    /** Back = ask: really exit (stops GPS and alarms) or keep alerting in the background. */
+    private fun confirmExit() {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Sair do Speed Alert?")
+            .setMessage("Ao sair, o GPS e os alarmes são desligados.\n\n"+
+                "Para usar com Waze/Maps, escolha \"Segundo plano\": os alertas continuam.")
+            .setPositiveButton("Sair") { _,_ ->
+                try { startService(Intent(this,MonitorService::class.java).setAction(MonitorService.STOP)) }
+                catch(_:Exception) {}
+                finishAndRemoveTask()
+            }
+            .setNeutralButton("Segundo plano") { _,_ -> moveTaskToBack(true) }
+            .setNegativeButton("Cancelar",null)
+            .show()
+    }
+    private val backCallback:Any? by lazy {
+        if(Build.VERSION.SDK_INT>=33) android.window.OnBackInvokedCallback { confirmExit() } else null
+    }
+    @Deprecated("Android 12 and older; 13+ uses OnBackInvokedCallback")
+    override fun onBackPressed() = confirmExit()
     override fun onResume() {
         super.onResume()
         if(AppConfig.screen(p))window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
