@@ -24,7 +24,7 @@ jobs:
         run: gradle :app:compileGithubDebugKotlin :app:compilePlayDebugKotlin :app:testPlayDebugUnitTest --no-daemon --stacktrace
       - name: Restore pinned offline OSM database (data/osm-db.lock)
         run: bash scripts/restore_osm_db.sh app/src/github/assets/df_roads_v3.sqlite
-      - name: Build Android v1.0.8 candidate
+      - name: Build Android v1.0.9 candidate
         run: gradle :app:assembleGithubDebug :app:assemblePlayDebug --no-daemon --stacktrace
       - name: Validate APK and offline database
         run: |
@@ -33,7 +33,7 @@ jobs:
           unzip -l app/build/outputs/apk/github/debug/app-github-debug.apk | grep -E 'classes.dex|assets/df_roads_v3.sqlite|ic_speed_alert'
       - uses: actions/upload-artifact@v4
         with:
-          name: PT2VHF-Speed-Alert-1.0.8-candidate-debug-APK
+          name: PT2VHF-Speed-Alert-1.0.9-candidate-debug-APK
           path: |
             app/build/outputs/apk/github/debug/app-github-debug.apk
             app/build/outputs/apk/play/debug/app-play-debug.apk

@@ -7,13 +7,11 @@ import android.util.Log
 import java.io.File
 import kotlin.math.*
 
-/** Offline map matching for road speeds, names and road-mounted speed cameras. */
+/** Offline map matching for road speed limits and names. */
 class Roads(context:Context) {
   data class Result(
     val limit:Double?, val source:String,
     val roadName:String="Via não identificada",
-    val radarDistance:Double?=null, val radarLimit:Double?=null,
-    val radarKey:String?=null,
     val wayId:Long=0L
   )
   /** One opened regional database and the area it covers (null = unknown, always queried). */
@@ -95,7 +93,7 @@ class Roads(context:Context) {
     summary=if(dbs.isEmpty())"nenhuma" else dbs.joinToString(", ") { it.id+" "+it.built }
   }
   fun close() { dbs.forEach { try { it.db.close() } catch(_:Exception) {} } }
-  fun resolve(loc:Location, radarRangeMeters:Double=300.0):Result {
+  fun resolve(loc:Location):Result {
     if(dbs.isEmpty())return Result(null,"BASE OFFLINE INDISPONÍVEL: "+(initError ?: "erro"))
     val lat=loc.latitude;val lon=loc.longitude
     val here=dbs.filter { it.covers(lat,lon) }
@@ -148,36 +146,7 @@ class Roads(context:Context) {
       (it.speed!=best.speed || (it.name.isNotBlank() && best.name.isNotBlank() && it.name!=best.name))
     }
     if(competing)return Result(null,"VIA AMBÍGUA")
-    val roadName=best.name.ifBlank{"Via não identificada"}
-    var radarDistance:Double?=null
-    var radarLimit:Double?=null
-    var radarKey:String?=null
-    // Show an upcoming camera farther away than the audible warning threshold, on this or
-    // the next OSM ways. The service activates the radar alarm only inside the user-selected range.
-    val radius=1500.0
-    val offset=(radius+40.0)/111320.0
-    val latTiles=(offset*1000).toInt()+2
-    val lonTiles=(offset*1000/max(0.4,cos(Math.toRadians(lat)))).toInt()+2
-    try {
-      val cams=ArrayList<CameraAhead.Camera>()
-      best.db.db.rawQuery(
-        "SELECT lat,lon,speed,wayid FROM cameras WHERE "+
-        "tile_lat BETWEEN ? AND ? AND tile_lon BETWEEN ? AND ?",
-        arrayOf((tlat-latTiles).toString(),(tlat+latTiles).toString(),
-          (tlon-lonTiles).toString(),(tlon+lonTiles).toString())
-      ).use { c ->
-        while(c.moveToNext()) {
-          val posted=if(c.isNull(2))best.speed else c.getDouble(2)
-          if(posted!=null)cams.add(CameraAhead.Camera(c.getDouble(0),c.getDouble(1),posted,c.getLong(3)==best.wayid))
-        }
-      }
-      CameraAhead.nearest(lat,lon,loc.bearing.toDouble(),cams,radius)?.let { (cam,dist) ->
-        radarDistance=dist
-        radarLimit=cam.speed
-        radarKey=String.format(java.util.Locale.US,"%.6f,%.6f",cam.lat,cam.lon)
-      }
-    } catch(e:Exception) {Log.w("PT2VHF.Roads","Radar lookup failed",e)}
-    return Result(best.speed,"OSM OFFLINE • "+best.db.label,roadName,radarDistance,radarLimit,radarKey,best.wayid)
+    return Result(best.speed,"OSM OFFLINE • "+best.db.label,best.name.ifBlank{"Via não identificada"},best.wayid)
   }
   private fun angle(a:Double,b:Double)=abs((a-b+540.0)%360.0-180.0)
 }

@@ -125,56 +125,6 @@ class AlarmAudio(context:Context) {
             stop()
         }
     }
-    /**
-     * Short two-tone chime (radar ahead). Never interrupts a looping alarm:
-     * if one is already playing, the chime is skipped.
-     */
-    @Synchronized
-    fun chime(volume:Int) {
-        if(playback!=null || volume<=0)return
-        try {
-            val tones=listOf(Segment(170,1320.0),Segment(40,0.0),Segment(260,990.0))
-            val count=tones.sumOf {it.duration*audioRate/1000}
-            val bytes=ByteArray(count*2)
-            var offset=0
-            var phase=0.0
-            for(segment in tones) {
-                val len=segment.duration*audioRate/1000
-                for(i in 0 until len) {
-                    val amp=if(segment.hz0==0.0)0.0 else {
-                        phase+=2.0*PI*segment.hz0/audioRate
-                        sin(phase)*min(1.0,min(i,len-1-i)/150.0)*0.66
-                    }
-                    val value=(amp*32767.0).toInt().coerceIn(-32768,32767)
-                    bytes[offset++]=(value and 255).toByte()
-                    bytes[offset++]=((value ushr 8) and 255).toByte()
-                }
-            }
-            val player=AudioTrack.Builder()
-                .setAudioAttributes(audioAttributes)
-                .setAudioFormat(AudioFormat.Builder().setSampleRate(audioRate)
-                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT).build())
-                .setBufferSizeInBytes(bytes.size)
-                .setTransferMode(AudioTrack.MODE_STATIC)
-                .build()
-            if(player.state!=AudioTrack.STATE_INITIALIZED || player.write(bytes,0,bytes.size)!=bytes.size) {
-                player.release();return
-            }
-            val request=AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
-                .setAudioAttributes(audioAttributes).build()
-            manager.requestAudioFocus(request)
-            player.setVolume(volume.coerceIn(0,100)/100f)
-            player.play()
-            Handler(Looper.getMainLooper()).postDelayed({
-                try { player.stop() } catch(_:Exception) {}
-                player.release()
-                manager.abandonAudioFocusRequest(request)
-            },count*1000L/audioRate+150L)
-        }catch(e:Exception) {
-            Log.e("PT2VHF.Audio","Could not play radar chime",e)
-        }
-    }
     @Synchronized
     fun stop() {
         try {
