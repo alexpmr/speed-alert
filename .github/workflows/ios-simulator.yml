@@ -41,6 +41,18 @@ jobs:
             -derivedDataPath ./DerivedData \
             CODE_SIGNING_ALLOWED=NO \
             build | tee "$RUNNER_TEMP/ios-build.log" | tail -120
+      - name: Unit tests on an iPhone simulator
+        working-directory: ios
+        run: |
+          set -euo pipefail
+          UDID=$(xcrun simctl list devices available | grep -m1 -oE 'iPhone [^(]+\(([0-9A-F-]{36})\)' | grep -oE '[0-9A-F-]{36}')
+          test -n "$UDID"
+          xcodebuild -project PT2VHFSpeedAlert.xcodeproj \
+            -scheme PT2VHFSpeedAlert \
+            -destination "id=$UDID" \
+            -derivedDataPath ./DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            test | tee "$RUNNER_TEMP/ios-test.log" | tail -60
       - name: Verify iOS simulator app bundle
         working-directory: ios
         run: |
@@ -48,12 +60,12 @@ jobs:
           APP="DerivedData/Build/Products/Debug-iphonesimulator/PT2VHFSpeedAlert.app"
           test -d "$APP"
           test -s "$APP/df_roads_v3.sqlite"
-          /usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP/Info.plist" | grep '^1.0.6$'
+          /usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP/Info.plist" | grep '^1.0.9$'
           /usr/libexec/PlistBuddy -c 'Print UIBackgroundModes' "$APP/Info.plist"
-          ditto -c -k --keepParent "$APP" PT2VHF-Speed-Alert-iOS-Simulator-1.0.6.zip
+          ditto -c -k --keepParent "$APP" PT2VHF-Speed-Alert-iOS-Simulator-1.0.9.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: PT2VHF-Speed-Alert-iOS-1.0.6-Simulator
-          path: ios/PT2VHF-Speed-Alert-iOS-Simulator-1.0.6.zip
+          name: PT2VHF-Speed-Alert-iOS-1.0.9-Simulator
+          path: ios/PT2VHF-Speed-Alert-iOS-Simulator-1.0.9.zip
           if-no-files-found: error
           retention-days: 15

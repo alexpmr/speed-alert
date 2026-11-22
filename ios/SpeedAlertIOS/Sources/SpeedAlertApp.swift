@@ -30,9 +30,11 @@ struct PT2VHFSpeedAlertApp: App {
                 }
             } message: {
                 Text("""
-                O PT2VHF Speed Alert é auxiliar e experimental. Dados GPS, limites de velocidade e radares offline podem ser imprecisos, incompletos ou desatualizados. A sinalização e as regras de trânsito prevalecem. Não manuseie o telefone ao dirigir.
+                O PT2VHF Speed Alert é uma ferramenta auxiliar e experimental. A velocidade do GPS e os limites de velocidade do OpenStreetMap podem estar incorretos, desatualizados, incompletos ou indisponíveis. O app e seus desenvolvedores não assumem responsabilidade por multas, acidentes, perdas ou danos decorrentes de seu uso, observados os limites da legislação aplicável.
 
-                Ao continuar, o monitoramento é iniciado. A verificação opcional de atualizações e o registro pseudônimo de instalações podem ser desativados em Ajustes. Não são enviados velocidade, trajeto nem coordenadas.
+                Localização, velocidade e trajetos são processados somente no iPhone. Para baixar o mapa, só é enviada a área aproximada (limites de uma área de ~11 km), nunca a posição exata.
+
+                A sinalização oficial e as normas de trânsito prevalecem sempre. Não manuseie o celular enquanto dirige.
                 """)
             }
         }

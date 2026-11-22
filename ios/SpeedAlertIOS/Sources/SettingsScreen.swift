@@ -4,10 +4,14 @@ struct SettingsScreen:View {
     @ObservedObject var model:SpeedModel
     @ObservedObject private var prefs:SpeedPreferences
     @Environment(\.openURL) private var openURL
+    @State private var maps=OnlineTiles.usage()
 
     init(model:SpeedModel) {
         self.model=model
         self.prefs=model.preferences
+    }
+    private var version:String {
+        Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? ""
     }
 
     var body:some View {
@@ -17,8 +21,12 @@ struct SettingsScreen:View {
                     .onChange(of:prefs.keepAwake) { _ in model.refreshSettings() }
                 Toggle("Usar limite manual",isOn:$prefs.manualEnabled)
                 if prefs.manualEnabled {
-                    Stepper("Limite: \(Int(prefs.manualLimit)) km/h",
-                        value:$prefs.manualLimit,in:10...130,step:10)
+                    HStack {
+                        Text("Limite manual")
+                        Spacer()
+                        Text("\(Int(prefs.manualLimit)) km/h")
+                    }
+                    Slider(value:$prefs.manualLimit,in:10...160,step:5)
                 }
                 HStack {
                     Text("Tolerância")
@@ -42,43 +50,51 @@ struct SettingsScreen:View {
                 }
                 Slider(value:$prefs.volume,in:0...100,step:5)
                     .onChange(of:prefs.volume){_ in model.refreshSettings()}
-                Stepper("Distância radar: \(Int(prefs.radarRange)) m",
-                    value:$prefs.radarRange,in:100...1000,step:100)
+                Button("Testar som (2 s)") {model.testSound()}
+                if let message=model.soundMessage {
+                    Text(message).font(.footnote).foregroundStyle(.red)
+                }
+                Text("O volume final segue o volume de mídia do iPhone.").font(.footnote)
             }
             Section("GPS em segundo plano") {
-                Text("Com o monitoramento iniciado, o iOS pode continuar recebendo GPS e reproduzindo alertas enquanto outro aplicativo estiver na tela. O funcionamento depende das permissões de localização e das políticas de energia do iOS.")
+                Text("Com o monitoramento iniciado, o iOS continua recebendo GPS e tocando os alertas enquanto o Waze, o Google Maps ou outro app estiver na tela. Isso depende da permissão de localização e das políticas de energia do iOS.")
                     .font(.footnote)
-                Button("Solicitar permissão de localização Sempre") {
-                    model.requestAlwaysAccess()
+                Button("Permitir localização \"Sempre\"") {model.requestAlwaysAccess()}
+                if model.monitoring {
+                    Button("Interromper monitoramento",role:.destructive) {model.stop()}
+                } else {
+                    Button("Iniciar monitoramento") {model.start()}
                 }
-                Button("Interromper monitoramento") {model.stop()}
             }
-            Section("Atualizações e privacidade") {
-                Toggle("Verificar novas atualizações periodicamente",
-                       isOn:$prefs.periodicChecks)
-                Toggle("Participar das estatísticas de instalações",
-                       isOn:$prefs.statistics)
-                Text("O identificador da instalação é pseudônimo. Não são transmitidos velocidade ou trajeto. O país pode ser estimado pelo servidor.")
+            Section("Mapas do OpenStreetMap") {
+                Text("Fora do DF, o app baixa sozinho os limites das vias em áreas de cerca de 11 km ao redor de você. Só a área aproximada é enviada, nunca a posição exata. Depois de baixadas, as áreas funcionam sem Internet por 30 dias.")
                     .font(.footnote)
-                Button("Verificar atualizações iOS agora") {
-                    model.checkUpdates()
+                HStack {
+                    Text("Áreas baixadas")
+                    Spacer()
+                    Text("\(maps.cells) • \(ByteCountFormatter.string(fromByteCount:maps.bytes,countStyle:.file))")
+                        .foregroundStyle(.secondary)
                 }
-                Text(model.updateStatus)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                Button("Consultar projeto e futuras versões iOS") {
-                    openURL(URL(string:"https://www.pt2vhf.com/speed")!)
+                Button("Apagar mapas baixados",role:.destructive) {
+                    model.clearMaps()
+                    maps=OnlineTiles.usage()
                 }
-                Text("No iPhone, a instalação de novas versões depende de TestFlight, App Store ou provisionamento Apple. O site não instala um IPA automaticamente.")
+            }
+            Section("Privacidade") {
+                Text("Localização, velocidade e trajetos ficam só no iPhone. O app não tem anúncios, contas nem estatísticas de uso.")
                     .font(.footnote)
+                Button("Política de privacidade") {
+                    openURL(URL(string:"https://alexpmr.github.io/speed-alert/privacidade.html")!)
+                }
             }
             Section {
-                Text("PT2VHF Speed Alert iOS 1.0.6 — beta técnico")
+                Text("PT2VHF Speed Alert iOS \(version)")
                 Text("Dados de vias: © OpenStreetMap contributors (ODbL 1.0).")
                     .font(.footnote)
             }
         }
         .navigationTitle("Configurações")
+        .onAppear {maps=OnlineTiles.usage()}
         .onDisappear {model.refreshSettings()}
     }
 }

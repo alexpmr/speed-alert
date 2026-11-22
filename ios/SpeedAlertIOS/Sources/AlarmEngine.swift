@@ -28,6 +28,8 @@ final class AlarmEngine {
     private let player=AVAudioPlayerNode()
     private var started=false
     private var currentKey=""
+    /// Why the last start failed (shown by "Testar som"), nil when it worked.
+    private(set) var lastError:String?
     private let sampleRate=22050.0
 
     init() {
@@ -76,7 +78,8 @@ final class AlarmEngine {
     func play(_ active:Bool,style:AlarmStyle,volume:Double) {
         if !active || volume<=0 { stop(); return }
         let key=style.rawValue
-        if currentKey==key && started {
+        // A phone call or Siri stops the engine without telling us: restart it then.
+        if currentKey==key && started && engine.isRunning && player.isPlaying {
             player.volume=Float(volume/100)
             return
         }
@@ -92,8 +95,10 @@ final class AlarmEngine {
             player.play()
             currentKey=key
             started=true
+            lastError=nil
         }catch{
             NSLog("PT2VHF: alert audio error %@",String(describing:error))
+            lastError=error.localizedDescription
             stop()
         }
     }

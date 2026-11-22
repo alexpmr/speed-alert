@@ -1,8 +1,8 @@
-# Política de Privacidade — PT2VHF Speed Alert (Android, Google Play)
+# Política de Privacidade — PT2VHF Speed Alert (Android e iPhone)
 
-Última atualização: 18 de novembro de 2026 (versão 1.0.9)
+Última atualização: 22 de novembro de 2026 (versão 1.0.9)
 
-Esta política se aplica ao aplicativo **PT2VHF Speed Alert** (`com.pt2vhf.speedalert`) distribuído pelo Google Play.
+Esta política se aplica ao aplicativo **PT2VHF Speed Alert** distribuído pelo Google Play (`com.pt2vhf.speedalert`) e pela Apple, na App Store e no TestFlight (`com.pt2vhf.speedalert.ios`). As diferenças da versão para iPhone estão na seção própria, abaixo.
 
 ## Dados que o aplicativo usa
 - **Localização precisa (GPS):** usada no próprio aparelho para calcular a velocidade, identificar a via na base offline OpenStreetMap, mostrar o limite e emitir alertas. Ela não é gravada em histórico. Só sai do aparelho em dois casos, descritos abaixo: o nome ou os limites da área de mapa baixada, que indicam uma região aproximada, e os relatos de erro que você decidir publicar.
@@ -35,6 +35,14 @@ Depois que você aceita o aviso inicial, o aplicativo mantém um serviço em pri
 
 ## Exclusão de dados
 Os dados locais, incluindo os relatos não publicados, são apagados ao excluir o relato, ao desinstalar o aplicativo ou ao limpar os dados nas Configurações do Android. Uma nota já publicada no OpenStreetMap pode ser comentada e fechada por qualquer mapeador. Para pedir a remoção de uma nota, siga o procedimento da OpenStreetMap Foundation.
+
+## Versão para iPhone
+A versão para iPhone segue esta mesma política, com estas diferenças:
+- A base de vias do DF e entorno já vem dentro do aplicativo. Fora dela, as áreas de cerca de 11 km × 11 km são baixadas do OpenStreetMap pelo servidor Overpass, como descrito acima. Os blocos de 110 km do GitHub não são usados.
+- Não há "Marcar erro" nem relatos publicados.
+- Para continuar alertando com outro aplicativo na tela, o iOS mostra o indicador de localização em uso. O monitoramento é interrompido em Configurações → "Interromper monitoramento" ou ao fechar o aplicativo.
+- Permissões: localização "Durante o uso" (ou "Sempre", se você escolher) e reprodução de áudio em segundo plano, para os alarmes.
+- Os dados locais e as áreas de mapa baixadas são apagados ao remover o aplicativo do iPhone. As áreas de mapa também podem ser apagadas em Configurações → "Apagar mapas baixados".
 
 ## Crianças
 O aplicativo é destinado a motoristas adultos e não é direcionado a crianças.
