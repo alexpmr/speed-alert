@@ -3,11 +3,9 @@ import Foundation
 final class SpeedPreferences: ObservableObject {
     @Published var tolerance: Double { didSet { save("tolerance", tolerance) } }
     @Published var volume: Double { didSet { save("volume", volume) } }
-    @Published var mute: Bool { didSet { save("mute", mute) } }
+    /// Not saved: silencing lasts until monitoring restarts, so nobody drives on unknowingly muted.
+    @Published var mute = false
     @Published var keepAwake: Bool { didSet { save("keepAwake", keepAwake) } }
-    @Published var periodicChecks: Bool { didSet { save("periodicChecks", periodicChecks) } }
-    @Published var statistics: Bool { didSet { save("statistics", statistics) } }
-    @Published var radarRange: Double { didSet { save("radarRange", radarRange) } }
     @Published var manualEnabled: Bool { didSet { save("manualEnabled", manualEnabled) } }
     @Published var manualLimit: Double { didSet { save("manualLimit", manualLimit) } }
     @Published var sound: AlarmStyle { didSet { save("sound", sound.rawValue) } }
@@ -24,13 +22,12 @@ final class SpeedPreferences: ObservableObject {
         let d = UserDefaults.standard
         tolerance = Self.num(d, "tolerance", 0)
         volume = Self.num(d, "volume", 80)
-        mute = Self.bool(d, "mute", false)
         keepAwake = Self.bool(d, "keepAwake", true)
-        periodicChecks = Self.bool(d, "periodicChecks", true)
-        statistics = Self.bool(d, "statistics", true)
-        radarRange = Self.num(d, "radarRange", 300)
         manualEnabled = Self.bool(d, "manualEnabled", false)
-        manualLimit = Self.num(d, "manualLimit", 60)
+        manualLimit = min(160, max(10, Self.num(d, "manualLimit", 60)))
         sound = AlarmStyle(rawValue: d.string(forKey: "sound") ?? "") ?? .beeps
+        // Pre-1.0.9 keys: radar, site update checks and statistics no longer exist.
+        ["mute", "radarRange", "periodicChecks", "statistics", "iosInstallUUID", "iosLastUpdateCheck"]
+            .forEach { d.removeObject(forKey: $0) }
     }
 }

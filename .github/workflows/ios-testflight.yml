@@ -1,0 +1,86 @@
+name: Upload iOS build to TestFlight
+# Manual: archives the App Store build with automatic signing (App Store Connect API key)
+# and uploads it to App Store Connect, where it appears in TestFlight after processing.
+# Needs: the app record (bundle id com.pt2vhf.speedalert.ios) created in App Store Connect and
+# the secrets IOS_TEAM_ID, ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8_BASE64 (key role: Admin).
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  testflight:
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+    steps:
+      - name: Require App Store Connect secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          for key in IOS_TEAM_ID ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8_BASE64; do
+            [ -n "$(printenv "$key")" ] || { echo "::error::Missing secret $key"; exit 2; }
+          done
+          [[ "$IOS_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]] || { echo "::error::IOS_TEAM_ID must be 10 characters"; exit 3; }
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: |
+          xcodebuild -version
+          brew install xcodegen
+      - name: Verify and prepare offline OSM database
+        run: bash ios/scripts/prepare_offline.sh
+      - name: Install API key
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf %s "$ASC_KEY_P8_BASE64" | base64 -D > "$RUNNER_TEMP/AuthKey.p8"
+          grep -q 'BEGIN PRIVATE KEY' "$RUNNER_TEMP/AuthKey.p8"
+      - name: Archive (automatic signing)
+        shell: bash
+        working-directory: ios
+        run: |
+          set -euo pipefail
+          xcodegen generate --spec project.yml
+          # Every upload needs a new build number; the workflow run number always grows.
+          BUILD=$((109 + GITHUB_RUN_NUMBER))
+          echo "BUILD=$BUILD" >> "$GITHUB_ENV"
+          xcodebuild -project PT2VHFSpeedAlert.xcodeproj -scheme PT2VHFSpeedAlert \
+            -configuration Release -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/PT2VHFSpeedAlert.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$IOS_TEAM_ID" CODE_SIGN_STYLE=Automatic CODE_SIGNING_ALLOWED=YES \
+            CURRENT_PROJECT_VERSION="$BUILD" \
+            archive | tail -80
+          test -d "$RUNNER_TEMP/PT2VHFSpeedAlert.xcarchive"
+      - name: Upload to App Store Connect
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>teamID</key><string>$IOS_TEAM_ID</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict></plist>
+          EOF
+          plutil -lint "$RUNNER_TEMP/ExportOptions.plist"
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/PT2VHFSpeedAlert.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" | tail -80
+          echo "Enviado: versão 1.0.9, build $BUILD. Aparece no TestFlight após o processamento da Apple."
+      - name: Remove API key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/AuthKey.p8"

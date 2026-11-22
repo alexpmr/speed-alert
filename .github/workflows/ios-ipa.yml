@@ -83,7 +83,7 @@ jobs:
           test -s "$RUNNER_TEMP/export/PT2VHFSpeedAlert.ipa"
           mkdir -p dist
           cp "$RUNNER_TEMP/export/PT2VHFSpeedAlert.ipa" \
-            dist/PT2VHF-Speed-Alert-iOS-v1.0.6-AdHoc.ipa
+            dist/PT2VHF-Speed-Alert-iOS-v1.0.9-AdHoc.ipa
           unzip -t dist/*.ipa | tail -2
           unzip -p dist/*.ipa Payload/PT2VHFSpeedAlert.app/Info.plist > "$RUNNER_TEMP/app-info.plist"
           plutil -extract CFBundleIdentifier raw -o - "$RUNNER_TEMP/app-info.plist" \
@@ -96,9 +96,9 @@ jobs:
           shasum -a 256 dist/*.ipa > dist/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: PT2VHF-Speed-Alert-iOS-v1.0.6-AdHoc-SIGNED
+          name: PT2VHF-Speed-Alert-iOS-v1.0.9-AdHoc-SIGNED
           path: |
-            dist/PT2VHF-Speed-Alert-iOS-v1.0.6-AdHoc.ipa
+            dist/PT2VHF-Speed-Alert-iOS-v1.0.9-AdHoc.ipa
             dist/SHA256SUMS.txt
           retention-days: 14
           if-no-files-found: error
